@@ -130,6 +130,10 @@ sidan visar bara tyst den gamla versionen.
 
 ## Felsökning
 
+- **"Google Drive API has not been used in project... or it is disabled"**:
+  scopet är tillagt men själva API:et är inte aktiverat. APIs och tjänster →
+  Bibliotek → sök "Google Drive API" → Enable. Vänta någon minut, testa igen.
+
 - **"OAuth client was not found" / Error 401: invalid_client**: `CLIENT_ID`
   i `config.js` är felaktigt — oftast avklippt, med extra mellanslag, eller
   klistrat in dubbelt. Kopiera det på nytt direkt från Cloud Console.
@@ -181,15 +185,21 @@ egen Drive — det är bara koden och webbadressen som är gemensam.
    använda) till exakt **"MSF Skyttelogg"** i Google Sheets/Drive. Det gör
    att appen hittar just ditt gamla ark automatiskt istället för att skapa
    ett nytt, tomt.
-2. **Cloud Console → Google Auth Platform → Data Access** → lägg till
+2. **APIs och tjänster → Bibliotek** → sök upp **"Google Drive API"** →
+   **Enable**. Lika viktigt som scopet nedan — utan detta steg vägrar Google
+   svara på Drive-anrop alls, med felet "Google Drive API has not been used
+   in project... or it is disabled".
+3. **Cloud Console → Google Auth Platform → Data Access** → lägg till
    scopet `https://www.googleapis.com/auth/drive.metadata.readonly` utöver
    det befintliga `spreadsheets`-scopet → Save.
-3. **Cloud Console → Google Auth Platform → Audience** → lägg till dina
+4. **Cloud Console → Google Auth Platform → Audience** → lägg till dina
    medanvändares Gmail-adresser under **Test users**.
-4. Uppdatera `config.js`, `index.html` och `app.js` i ditt repo till de
+5. Uppdatera `config.js`, `index.html` och `app.js` i ditt repo till de
    senaste versionerna.
-5. Logga in i appen igen (du får se en uppdaterad behörighetsruta eftersom
-   ett nytt scope tillkommit — helt väntat, godkänn den).
+6. Logga in i appen igen (du får se en uppdaterad behörighetsruta eftersom
+   ett nytt scope tillkommit — helt väntat, godkänn den). Räkna med att
+   Google ibland tar någon minut på sig innan ändringar i Cloud Console
+   slår igenom fullt ut.
 
 ### Att bjuda in en ny person
 
