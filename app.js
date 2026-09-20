@@ -3,21 +3,27 @@
 // Google Identity Services (inloggning) + Sheets API (databas)
 // =================================================================
 
-const WEAPONS = [
-  { id: "c22", label: "C-vapen (.22 LR)", value: "Vapengrupp C (.22 LR)" },
-  { id: "a9",  label: "A-vapen (9mm)",     value: "Vapengrupp A (9mm)" },
-  { id: "rev", label: "R-vapen (Revolver)", value: "Vapengrupp R (Revolver)" },
-  { id: "gev", label: "Gevär",             value: "Gevär" }
+// Standardvapen som sätts upp första gången (i "Vapen"-fliken i arket).
+// Efter det är listan helt användarens egen - hanteras via "Hantera vapen".
+const DEFAULT_WEAPONS = [
+  "Vapengrupp C (.22 LR)",
+  "Vapengrupp A (9mm)",
+  "Vapengrupp R (Revolver)",
+  "Gevär"
 ];
+let weaponsList = [];
 
 let accessToken = null;
 let tokenClient = null;
 let spreadsheetId = null;   // dynamiskt: från config.js ELLER auto-skapat ark
 let sheetTitle = null;   // fliknamnet, hämtas en gång vid inloggning
 let sheetGridId = null;  // numeriskt sheetId, används för sortering
+let weaponsSheetGridId = null; // numeriskt sheetId för "Vapen"-fliken
 let currentMode = "training";
 
 const LOCAL_SHEET_KEY = "msf_spreadsheet_id";
+const QUEUE_KEY = "msf_pending_queue";
+const WEAPONS_TAB_NAME = "Vapen";
 const HEADER_ROW = ["Datum", "Aktivitet", "Vapengrupp/Typ", "Antal skott", "Plats/Förening", "Notering"];
 
 // ---------- Init ----------
@@ -27,8 +33,9 @@ window.addEventListener("load", () => {
   wireDatePicker("editDateInput", "editDateDisplay");
   wireDatePicker("exportFromInput", "exportFromDisplay");
   wireDatePicker("exportToInput", "exportToDisplay");
-  buildWeaponList();
   wireStaticEvents();
+  updateQueueBadge();
+  window.addEventListener("online", trySyncQueue);
 
   // Google-biblioteket laddas async — vänta tills det finns
   waitForGoogleLib(() => {
@@ -107,6 +114,17 @@ function wireStaticEvents() {
   document.getElementById("exportOverlay").addEventListener("click", e => {
     if (e.target.id === "exportOverlay") closeExportOverlay();
   });
+
+  // Vapenhantering
+  document.getElementById("manageWeaponsBtn").addEventListener("click", openWeaponsOverlay);
+  document.getElementById("weaponsCloseBtn").addEventListener("click", closeWeaponsOverlay);
+  document.getElementById("addWeaponBtn").addEventListener("click", addWeapon);
+  document.getElementById("newWeaponInput").addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); addWeapon(); }
+  });
+  document.getElementById("weaponsOverlay").addEventListener("click", e => {
+    if (e.target.id === "weaponsOverlay") closeWeaponsOverlay();
+  });
 }
 
 async function onTokenReceived(resp) {
@@ -117,13 +135,17 @@ async function onTokenReceived(resp) {
   accessToken = resp.access_token;
   document.getElementById("signedOutView").classList.add("hidden");
   document.getElementById("appView").classList.remove("hidden");
-  document.getElementById("signOutBtn").classList.remove("hidden");
+  document.getElementById("topbarActions").classList.remove("hidden");
 
   try {
     await ensureSpreadsheet();
     await loadSheetMeta();
+    await ensureWeaponsSheet();
+    await loadWeapons();
+    buildWeaponList();
     document.getElementById("sheetLink").href =
       `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+    await trySyncQueue();
     loadRecent();
   } catch (e) {
     showToast("Kunde inte läsa kalkylarket: " + e.message, true);
@@ -188,7 +210,7 @@ function signOut() {
   }
   accessToken = null;
   document.getElementById("appView").classList.add("hidden");
-  document.getElementById("signOutBtn").classList.add("hidden");
+  document.getElementById("topbarActions").classList.add("hidden");
   document.getElementById("signedOutView").classList.remove("hidden");
 }
 
@@ -222,9 +244,59 @@ async function loadSheetMeta() {
   const data = await sheetsFetch(
     `${spreadsheetId}?fields=sheets.properties`
   );
-  const first = data.sheets[0].properties;
-  sheetTitle = first.title;
-  sheetGridId = first.sheetId;
+  const all = data.sheets.map(s => s.properties);
+  const logSheet = all.find(s => s.title !== WEAPONS_TAB_NAME) || all[0];
+  sheetTitle = logSheet.title;
+  sheetGridId = logSheet.sheetId;
+  const weaponsSheet = all.find(s => s.title === WEAPONS_TAB_NAME);
+  weaponsSheetGridId = weaponsSheet ? weaponsSheet.sheetId : null;
+}
+
+// Skapar fliken "Vapen" om den inte redan finns, och fyller den med
+// standardvapnen som utgångspunkt (samma text som redan används i arket).
+async function ensureWeaponsSheet() {
+  if (weaponsSheetGridId !== null) return;
+
+  const result = await sheetsFetch(`${spreadsheetId}:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({
+      requests: [{ addSheet: { properties: { title: WEAPONS_TAB_NAME } } }]
+    })
+  });
+  weaponsSheetGridId = result.replies[0].addSheet.properties.sheetId;
+
+  const range = encodeURIComponent(`${WEAPONS_TAB_NAME}!A1:A${DEFAULT_WEAPONS.length}`);
+  await sheetsFetch(
+    `${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
+    { method: "PUT", body: JSON.stringify({ values: DEFAULT_WEAPONS.map(w => [w]) }) }
+  );
+}
+
+async function loadWeapons() {
+  try {
+    const range = encodeURIComponent(`${WEAPONS_TAB_NAME}!A:A`);
+    const data = await sheetsFetch(`${spreadsheetId}/values/${range}`);
+    const values = (data.values || []).map(r => (r[0] || "").trim()).filter(Boolean);
+    weaponsList = values.length > 0 ? values : DEFAULT_WEAPONS.slice();
+  } catch (e) {
+    weaponsList = DEFAULT_WEAPONS.slice(); // reserv om något går fel
+  }
+}
+
+async function saveWeapons(list) {
+  // Rensa hela kolumnen först - annars kan borttagna vapen bli kvar
+  // som spökrader om nya listan är kortare än den gamla.
+  await sheetsFetch(
+    `${spreadsheetId}/values/${encodeURIComponent(WEAPONS_TAB_NAME + "!A:A")}:clear`,
+    { method: "POST" }
+  );
+  if (list.length > 0) {
+    const range = encodeURIComponent(`${WEAPONS_TAB_NAME}!A1:A${list.length}`);
+    await sheetsFetch(
+      `${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
+      { method: "PUT", body: JSON.stringify({ values: list.map(w => [w]) }) }
+    );
+  }
 }
 
 let recentRowsCache = {}; // radnummer (1-indexerat i arket) -> radens värden
@@ -306,14 +378,72 @@ async function sortSheetByDateDesc() {
   });
 }
 
+// ---------- Offline-kö ----------
+// Om loggning misslyckas pga uteblivet nätverk sparas passet lokalt på
+// enheten (bara som en tillfällig buffert - den riktiga datan lever i
+// arket så fort synk lyckas) och skickas automatiskt så fort uppkoppling
+// finns igen.
+function getQueue() {
+  try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); }
+  catch (e) { return []; }
+}
+
+function setQueue(queue) {
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  updateQueueBadge();
+}
+
+function updateQueueBadge() {
+  const badge = document.getElementById("queueBadge");
+  const n = getQueue().length;
+  if (n === 0) {
+    badge.classList.add("hidden");
+    return;
+  }
+  badge.textContent = n === 1
+    ? "1 pass väntar på synk"
+    : `${n} pass väntar på synk`;
+  badge.classList.remove("hidden");
+}
+
+function queueRows(rows) {
+  const queue = getQueue();
+  queue.push({ id: Date.now() + "-" + Math.random().toString(36).slice(2), rows });
+  setQueue(queue);
+}
+
+async function trySyncQueue() {
+  if (!accessToken || !spreadsheetId) return;
+  let queue = getQueue();
+  if (queue.length === 0) return;
+
+  let syncedAny = false;
+  while (queue.length > 0) {
+    try {
+      await appendRows(queue[0].rows);
+      queue.shift();
+      setQueue(queue);
+      syncedAny = true;
+    } catch (e) {
+      break; // fortfarande offline (eller annat fel) - försök igen nästa gång
+    }
+  }
+
+  if (syncedAny) {
+    try { await sortSheetByDateDesc(); } catch (e) { /* strunta i, kosmetiskt */ }
+    showToast("Köade pass synkade!", false);
+    loadRecent();
+  }
+}
+
 // ---------- Vapenlista (UI) ----------
 function buildWeaponList() {
   const container = document.getElementById("weaponList");
   container.innerHTML = "";
 
-  WEAPONS.forEach(w => container.appendChild(weaponChip(w.value, w.label)));
+  weaponsList.forEach(w => container.appendChild(weaponChip(w, w)));
 
-  // Fritextchip för valfritt vapen
+  // Fritextchip för valfritt vapen - alltid tillgängligt, oavsett hanterad lista
   const chip = document.createElement("label");
   chip.className = "weapon-chip weapon-chip--custom";
   chip.dataset.weapon = "";
@@ -327,6 +457,63 @@ function buildWeaponList() {
     </span>`;
   container.appendChild(chip);
   wireChip(chip, true);
+}
+
+// ---------- Hantera vapen (overlay) ----------
+function openWeaponsOverlay() {
+  renderWeaponsManageList();
+  document.getElementById("weaponsOverlay").classList.remove("hidden");
+}
+
+function closeWeaponsOverlay() {
+  document.getElementById("weaponsOverlay").classList.add("hidden");
+  document.getElementById("newWeaponInput").value = "";
+}
+
+function renderWeaponsManageList() {
+  const container = document.getElementById("weaponsManageList");
+  if (weaponsList.length === 0) {
+    container.innerHTML = `<p class="muted small">Inga vapen tillagda än.</p>`;
+    return;
+  }
+  container.innerHTML = weaponsList.map((w, i) => `
+    <div class="weapon-manage-row">
+      <span>${escapeHtml(w)}</span>
+      <button type="button" class="weapon-remove-btn" data-index="${i}" aria-label="Ta bort">×</button>
+    </div>`).join("");
+  container.querySelectorAll(".weapon-remove-btn").forEach(btn => {
+    btn.addEventListener("click", () => removeWeapon(parseInt(btn.dataset.index, 10)));
+  });
+}
+
+async function addWeapon() {
+  const input = document.getElementById("newWeaponInput");
+  const name = input.value.trim();
+  if (!name) return;
+  if (weaponsList.includes(name)) {
+    showToast("Det vapnet finns redan i listan.", true);
+    return;
+  }
+  weaponsList.push(name);
+  input.value = "";
+  renderWeaponsManageList();
+  try {
+    await saveWeapons(weaponsList);
+    buildWeaponList();
+  } catch (e) {
+    showToast("Kunde inte spara: " + e.message, true);
+  }
+}
+
+async function removeWeapon(index) {
+  weaponsList.splice(index, 1);
+  renderWeaponsManageList();
+  try {
+    await saveWeapons(weaponsList);
+    buildWeaponList();
+  } catch (e) {
+    showToast("Kunde inte spara: " + e.message, true);
+  }
 }
 
 function weaponChip(value, label) {
@@ -505,6 +692,38 @@ async function deleteEditedRow() {
 }
 
 // ---------- PDF-export ----------
+// Tolkar "1 ask" / "2½ askar" / "½ ask" tillbaka till ett tal, för summering.
+function parseAmount(str) {
+  if (!str) return 0;
+  const s = str.trim();
+  if (s.startsWith("½")) return 0.5;
+  const m = s.match(/^(\d+)(½)?/);
+  if (!m) return 0;
+  let n = parseInt(m[1], 10);
+  if (m[2]) n += 0.5;
+  return n;
+}
+
+function buildSummary(rows) {
+  const weaponStats = {}; // vapen -> { sessions, tavling, total }
+  const otherStats = {};  // aktivitet -> antal
+
+  rows.forEach(row => {
+    const [, activity, weapon, amount] = row;
+    if (weapon) {
+      if (!weaponStats[weapon]) weaponStats[weapon] = { sessions: 0, tavling: 0, total: 0 };
+      weaponStats[weapon].sessions++;
+      if (activity === "Tävling") weaponStats[weapon].tavling++;
+      weaponStats[weapon].total += parseAmount(amount);
+    } else {
+      const key = activity || "Övrigt";
+      otherStats[key] = (otherStats[key] || 0) + 1;
+    }
+  });
+
+  return { weaponStats, otherStats };
+}
+
 function openExportOverlay() {
   const today = todayLocalStr();
   const d = new Date();
@@ -571,6 +790,45 @@ function buildPdf(rows, from, to) {
   y += 5;
   doc.text(`Skapad: ${formatDateDisplay(todayLocalStr())}`, marginX, y);
   y += 9;
+
+  // ---- Sammanställning ----
+  const { weaponStats, otherStats } = buildSummary(rows);
+  const weaponNames = Object.keys(weaponStats);
+
+  if (weaponNames.length > 0 || Object.keys(otherStats).length > 0) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(20, 20, 20);
+    doc.text("Sammanställning", marginX, y);
+    y += 6;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(50, 50, 50);
+
+    weaponNames.forEach(name => {
+      const s = weaponStats[name];
+      const passText = s.sessions === 1 ? "1 pass" : `${s.sessions} pass`;
+      const tavlingText = s.tavling > 0 ? ` (varav ${s.tavling} tävling)` : "";
+      const totalText = s.total > 0
+        ? `${fractionText(s.total)} ${s.total > 1 ? "askar" : "ask"}`
+        : "";
+      doc.text(name, marginX, y);
+      doc.text(passText + tavlingText, marginX + 95, y);
+      if (totalText) doc.text(totalText, pageWidth - marginX - 22, y);
+      y += 5.5;
+    });
+
+    const otherKeys = Object.keys(otherStats);
+    if (otherKeys.length > 0) {
+      const otherLine = "Övrigt: " + otherKeys.map(k => `${k} (${otherStats[k]})`).join(", ");
+      const otherLines = doc.splitTextToSize(otherLine, pageWidth - marginX * 2);
+      doc.text(otherLines, marginX, y);
+      y += otherLines.length * 4.2;
+    }
+
+    y += 6;
+  }
 
   doc.setDrawColor(196, 145, 94);
   doc.setLineWidth(0.5);
@@ -688,7 +946,14 @@ async function submitLog() {
     resetForm();
     loadRecent();
   } catch (e) {
-    showToast("Ett fel uppstod: " + e.message, true);
+    const isOffline = !navigator.onLine || e instanceof TypeError;
+    if (isOffline) {
+      queueRows(rows);
+      showToast("Ingen uppkoppling - sparat, synkas automatiskt.", false);
+      resetForm();
+    } else {
+      showToast("Ett fel uppstod: " + e.message, true);
+    }
   } finally {
     logBtn.disabled = false;
   }
