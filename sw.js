@@ -1,4 +1,4 @@
-const CACHE_NAME = "skyttelogg-shell-v1";
+const CACHE_NAME = "skyttelogg-shell-v2";
 const SHELL_FILES = [
   "./index.html",
   "./style.css",
@@ -25,13 +25,21 @@ self.addEventListener("activate", event => {
   self.clients.claim();
 });
 
-// Skalet (HTML/CSS/JS) cache-first för snabb start.
-// Google/Sheets API-anrop rörs aldrig - alltid nätverket, alltid färsk data.
+// Nätverk först, cache bara som reserv om man är offline.
+// Skalet (HTML/CSS/JS) blir alltid färskt vid uppdatering - ingen
+// väntan på att webbläsaren ska "upptäcka" att något ändrats.
+// Google/Sheets API-anrop rörs aldrig - alltid nätverket.
 self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return; // rör inte externa API-anrop
+  if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
+    fetch(event.request)
+      .then(response => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
