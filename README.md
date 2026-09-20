@@ -108,6 +108,21 @@ bekräfta att innehållet stämmer, innan du testar i appen. En redigering som
 råkar hamna i fel gren, eller aldrig committas, ger inget felmeddelande —
 sidan visar bara tyst den gamla versionen.
 
+## Vad appen gör automatiskt
+
+- **Vapenlista**: en flik som heter "Vapen" skapas automatiskt i ditt ark
+  första gången du loggar in, förifylld med fyra standardvapen. Hantera din
+  egen lista via kugghjulsikonen högst upp i appen — lägg till eller ta bort
+  fritt, det syns direkt i loggformuläret.
+- **Offline-loggning**: har du dålig täckning (vanligt inomhus på
+  skjutbanor) sparas ett pass lokalt på telefonen istället för att
+  misslyckas, och skickas automatiskt till arket så fort du har uppkoppling
+  igen. En liten notis ("X pass väntar på synk") visar om något ligger och
+  väntar.
+- **PDF-sammanställning**: exporten visar nu en summering per vapengrupp
+  (antal pass, varav tävling, totalt antal askar) överst i dokumentet,
+  användbart som underlag för aktivitetsintyg.
+
 ## Felsökning
 
 - **"OAuth client was not found" / Error 401: invalid_client**: `CLIENT_ID`
