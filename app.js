@@ -265,36 +265,40 @@ async function ensureWeaponsSheet() {
   });
   weaponsSheetGridId = result.replies[0].addSheet.properties.sheetId;
 
-  const range = encodeURIComponent(`${WEAPONS_TAB_NAME}!A1:A${DEFAULT_WEAPONS.length}`);
+  const range = encodeURIComponent(`${WEAPONS_TAB_NAME}!A1:B${DEFAULT_WEAPONS.length}`);
   await sheetsFetch(
     `${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
-    { method: "PUT", body: JSON.stringify({ values: DEFAULT_WEAPONS.map(w => [w]) }) }
+    { method: "PUT", body: JSON.stringify({ values: DEFAULT_WEAPONS.map(w => [w, ""]) }) }
   );
 }
 
 async function loadWeapons() {
   try {
-    const range = encodeURIComponent(`${WEAPONS_TAB_NAME}!A:A`);
+    const range = encodeURIComponent(`${WEAPONS_TAB_NAME}!A:B`);
     const data = await sheetsFetch(`${spreadsheetId}/values/${range}`);
-    const values = (data.values || []).map(r => (r[0] || "").trim()).filter(Boolean);
-    weaponsList = values.length > 0 ? values : DEFAULT_WEAPONS.slice();
+    const values = (data.values || [])
+      .map(r => ({ name: (r[0] || "").trim(), favorite: r[1] === "1" }))
+      .filter(w => w.name);
+    weaponsList = values.length > 0
+      ? values
+      : DEFAULT_WEAPONS.map(name => ({ name, favorite: false }));
   } catch (e) {
-    weaponsList = DEFAULT_WEAPONS.slice(); // reserv om något går fel
+    weaponsList = DEFAULT_WEAPONS.map(name => ({ name, favorite: false })); // reserv
   }
 }
 
 async function saveWeapons(list) {
-  // Rensa hela kolumnen först - annars kan borttagna vapen bli kvar
+  // Rensa hela intervallet först - annars kan borttagna vapen bli kvar
   // som spökrader om nya listan är kortare än den gamla.
   await sheetsFetch(
-    `${spreadsheetId}/values/${encodeURIComponent(WEAPONS_TAB_NAME + "!A:A")}:clear`,
+    `${spreadsheetId}/values/${encodeURIComponent(WEAPONS_TAB_NAME + "!A:B")}:clear`,
     { method: "POST" }
   );
   if (list.length > 0) {
-    const range = encodeURIComponent(`${WEAPONS_TAB_NAME}!A1:A${list.length}`);
+    const range = encodeURIComponent(`${WEAPONS_TAB_NAME}!A1:B${list.length}`);
     await sheetsFetch(
       `${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
-      { method: "PUT", body: JSON.stringify({ values: list.map(w => [w]) }) }
+      { method: "PUT", body: JSON.stringify({ values: list.map(w => [w.name, w.favorite ? "1" : ""]) }) }
     );
   }
 }
@@ -441,7 +445,7 @@ function buildWeaponList() {
   const container = document.getElementById("weaponList");
   container.innerHTML = "";
 
-  weaponsList.forEach(w => container.appendChild(weaponChip(w, w)));
+  weaponsList.forEach(w => container.appendChild(weaponChip(w.name, w.name)));
 
   // Fritextchip för valfritt vapen - alltid tillgängligt, oavsett hanterad lista
   const chip = document.createElement("label");
@@ -477,43 +481,117 @@ function renderWeaponsManageList() {
     return;
   }
   container.innerHTML = weaponsList.map((w, i) => `
-    <div class="weapon-manage-row">
-      <span>${escapeHtml(w)}</span>
+    <div class="weapon-manage-row${w.favorite ? " favorite" : ""}" data-index="${i}">
+      <span class="weapon-drag-handle" aria-label="Dra för att ändra ordning">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="4" y1="8" x2="20" y2="8"></line>
+          <line x1="4" y1="16" x2="20" y2="16"></line>
+        </svg>
+      </span>
+      <button type="button" class="weapon-star-btn" data-index="${i}" aria-label="${w.favorite ? "Ta bort favorit" : "Gör till favorit"}">${w.favorite ? "★" : "☆"}</button>
+      <span class="weapon-manage-name">${escapeHtml(w.name)}</span>
       <button type="button" class="weapon-remove-btn" data-index="${i}" aria-label="Ta bort">×</button>
     </div>`).join("");
+
   container.querySelectorAll(".weapon-remove-btn").forEach(btn => {
     btn.addEventListener("click", () => removeWeapon(parseInt(btn.dataset.index, 10)));
   });
+  container.querySelectorAll(".weapon-star-btn").forEach(btn => {
+    btn.addEventListener("click", () => toggleFavorite(parseInt(btn.dataset.index, 10)));
+  });
+  container.querySelectorAll(".weapon-manage-row").forEach(row => {
+    wireDragHandle(row);
+  });
+}
+
+function toggleFavorite(index) {
+  const item = weaponsList[index];
+  item.favorite = !item.favorite;
+  if (item.favorite) {
+    // Flytta favoritmarkerat vapen till toppen av listan
+    weaponsList.splice(index, 1);
+    weaponsList.unshift(item);
+  }
+  persistAndRefreshWeapons();
+}
+
+// ---------- Dra för att ändra ordning ----------
+// Fungerar med både touch och mus via Pointer Events. Endast själva
+// handtaget (de två strecken) startar en dragning, inte hela raden -
+// annars kolliderar det med tryck på stjärna/kryss.
+let dragState = null;
+
+function wireDragHandle(row) {
+  const handle = row.querySelector(".weapon-drag-handle");
+
+  handle.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    const container = document.getElementById("weaponsManageList");
+    const rows = Array.from(container.querySelectorAll(".weapon-manage-row"));
+    dragState = {
+      row,
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      startIndex: rows.indexOf(row),
+      rowHeight: row.getBoundingClientRect().height
+    };
+    row.classList.add("dragging");
+    handle.setPointerCapture(e.pointerId);
+  });
+
+  handle.addEventListener("pointermove", e => {
+    if (!dragState || dragState.row !== row || e.pointerId !== dragState.pointerId) return;
+    const dy = e.clientY - dragState.startY;
+    row.style.transform = `translateY(${dy}px)`;
+  });
+
+  const endDrag = e => {
+    if (!dragState || dragState.row !== row || e.pointerId !== dragState.pointerId) return;
+    const dy = e.clientY - dragState.startY;
+    const moveBy = Math.round(dy / dragState.rowHeight);
+    const newIndex = Math.max(0, Math.min(weaponsList.length - 1, dragState.startIndex + moveBy));
+
+    row.style.transform = "";
+    row.classList.remove("dragging");
+
+    if (newIndex !== dragState.startIndex) {
+      const [moved] = weaponsList.splice(dragState.startIndex, 1);
+      weaponsList.splice(newIndex, 0, moved);
+      persistAndRefreshWeapons();
+    }
+    dragState = null;
+  };
+
+  handle.addEventListener("pointerup", endDrag);
+  handle.addEventListener("pointercancel", endDrag);
+}
+
+async function persistAndRefreshWeapons() {
+  renderWeaponsManageList();
+  try {
+    await saveWeapons(weaponsList);
+    buildWeaponList();
+  } catch (e) {
+    showToast("Kunde inte spara: " + e.message, true);
+  }
 }
 
 async function addWeapon() {
   const input = document.getElementById("newWeaponInput");
   const name = input.value.trim();
   if (!name) return;
-  if (weaponsList.includes(name)) {
+  if (weaponsList.some(w => w.name === name)) {
     showToast("Det vapnet finns redan i listan.", true);
     return;
   }
-  weaponsList.push(name);
+  weaponsList.push({ name, favorite: false });
   input.value = "";
-  renderWeaponsManageList();
-  try {
-    await saveWeapons(weaponsList);
-    buildWeaponList();
-  } catch (e) {
-    showToast("Kunde inte spara: " + e.message, true);
-  }
+  await persistAndRefreshWeapons();
 }
 
 async function removeWeapon(index) {
   weaponsList.splice(index, 1);
-  renderWeaponsManageList();
-  try {
-    await saveWeapons(weaponsList);
-    buildWeaponList();
-  } catch (e) {
-    showToast("Kunde inte spara: " + e.message, true);
-  }
+  await persistAndRefreshWeapons();
 }
 
 function weaponChip(value, label) {
@@ -709,7 +787,10 @@ function buildSummary(rows) {
   const otherStats = {};  // aktivitet -> antal
 
   rows.forEach(row => {
-    const [, activity, weapon, amount] = row;
+    const [, activity, rawWeapon, amount] = row;
+    // Normalisera bort dubbla mellanslag / osynliga tecken, så att äldre
+    // loggposter med lite olika skrivsätt av samma vapen slås ihop korrekt.
+    const weapon = (rawWeapon || "").replace(/\s+/g, " ").trim();
     if (weapon) {
       if (!weaponStats[weapon]) weaponStats[weapon] = { sessions: 0, tavling: 0, total: 0 };
       weaponStats[weapon].sessions++;
@@ -806,6 +887,9 @@ function buildPdf(rows, from, to) {
     doc.setFontSize(9.5);
     doc.setTextColor(50, 50, 50);
 
+    const nameColWidth = 90; // mm tillgängligt innan pass-kolumnen
+    const summaryLineHeight = 4.2;
+
     weaponNames.forEach(name => {
       const s = weaponStats[name];
       const passText = s.sessions === 1 ? "1 pass" : `${s.sessions} pass`;
@@ -813,10 +897,23 @@ function buildPdf(rows, from, to) {
       const totalText = s.total > 0
         ? `${fractionText(s.total)} ${s.total > 1 ? "askar" : "ask"}`
         : "";
-      doc.text(name, marginX, y);
+
+      // Samma teknik som i detaljtabellen: dela upp långa vapennamn i så
+      // många rader som faktiskt behövs, och basera radhöjden på det -
+      // annars kan ett långt namn krocka med nästa rad.
+      const nameLines = doc.splitTextToSize(name, nameColWidth);
+      const rowHeight = Math.max(nameLines.length, 1) * summaryLineHeight;
+
+      if (y + rowHeight > 275) {
+        doc.addPage();
+        y = 20;
+      }
+
+      doc.text(nameLines, marginX, y);
       doc.text(passText + tavlingText, marginX + 95, y);
       if (totalText) doc.text(totalText, pageWidth - marginX - 22, y);
-      y += 5.5;
+
+      y += rowHeight + 1.3;
     });
 
     const otherKeys = Object.keys(otherStats);
@@ -824,7 +921,7 @@ function buildPdf(rows, from, to) {
       const otherLine = "Övrigt: " + otherKeys.map(k => `${k} (${otherStats[k]})`).join(", ");
       const otherLines = doc.splitTextToSize(otherLine, pageWidth - marginX * 2);
       doc.text(otherLines, marginX, y);
-      y += otherLines.length * 4.2;
+      y += otherLines.length * summaryLineHeight;
     }
 
     y += 6;
