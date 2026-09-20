@@ -5,7 +5,7 @@
 const CONFIG = {
   // Från Google Cloud Console → API:er och tjänster → Autentiseringsuppgifter
   // → OAuth-klient-ID (typ "Webbapp")
-  CLIENT_ID: "1069993239744-r9lqg38t6u4gku0at7j86n8pbqv5a0pl.apps.googleusercontent.com.apps.googleusercontent.com",
+  CLIENT_ID: "1069993239744-r9lqg38t6u4gku0at7j86n8pbqv5a0pl.apps.googleusercontent.com",
 
   // ID:t i URL:en till ditt kalkylark:
   // https://docs.google.com/spreadsheets/d/DETTA_ÄR_ID:T/edit
