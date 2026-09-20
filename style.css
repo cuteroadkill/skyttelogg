@@ -210,77 +210,80 @@ body {
   color: #1A1509;
 }
 
-/* ---------- Weapon list ---------- */
-.weapon-list {
-  background: var(--surface);
+/* ---------- Weapon chips ---------- */
+.weapon-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.weapon-chip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 14px;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-.weapon-row {
-  display: flex;
-  align-items: center;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--line-soft);
-  border-left: 3px solid transparent;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-.weapon-row:last-child { border-bottom: none; }
-.weapon-row.active {
-  background: rgba(196, 145, 94, 0.08);
-  border-left-color: var(--brass);
-}
-.weapon-label {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-  padding: 14px 8px;
+  background: var(--surface);
   cursor: pointer;
   user-select: none;
-  gap: 12px;
-  font-size: 15px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
-.weapon-row input[type="checkbox"] {
-  width: 20px; height: 20px;
-  accent-color: var(--brass);
-  flex-shrink: 0;
+.weapon-chip--custom {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.chip-input {
+  position: absolute;
+  width: 0; height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.chip-label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+}
+.weapon-chip:has(.chip-input:checked) {
+  background: rgba(196, 145, 94, 0.12);
+  border-color: var(--brass);
 }
 .custom-name {
   flex: 1;
-  min-width: 0;
-  margin: 8px 8px 8px 12px;
-  padding: 10px 12px;
+  min-width: 120px;
   font-size: 14px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
 }
-.weapon-row > input[type="checkbox"] {
-  margin-left: 14px;
-}
+.custom-name:focus { outline: none; }
 
-.stepper {
-  display: flex;
+.chip-stepper {
+  display: none;
   align-items: center;
-  gap: 2px;
-  padding-right: 8px;
-  opacity: 1;
-  transition: opacity 0.15s ease;
+  gap: 8px;
 }
-.stepper.disabled { opacity: 0.28; }
+.weapon-chip:has(.chip-input:checked) .chip-stepper { display: flex; }
+.weapon-chip--custom .chip-stepper { margin-left: auto; }
+
 .step-btn {
-  width: 34px; height: 34px;
+  width: 32px; height: 32px;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--surface-raised);
   color: var(--text);
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   line-height: 1;
 }
-.step-btn:disabled { cursor: default; }
 .amount {
-  width: 34px;
+  min-width: 26px;
   text-align: center;
   font-size: 14px;
   font-weight: 600;
@@ -293,22 +296,17 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
-  color: var(--text-muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  margin-bottom: 10px;
+  font-size: 13px;
+  margin-bottom: 8px;
 }
-.recent-list { display: flex; flex-direction: column; gap: 1px; }
+.recent-list { display: flex; flex-direction: column; }
 .recent-item {
   display: flex;
   gap: 14px;
-  background: var(--surface);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-  margin-bottom: 6px;
+  padding: 14px 2px;
+  border-bottom: 1px solid var(--line-soft);
 }
+.recent-item:last-child { border-bottom: none; }
 .recent-date {
   font-size: 12px;
   color: var(--brass);
