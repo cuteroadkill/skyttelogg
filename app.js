@@ -18,8 +18,11 @@ let currentMode = "training";
 
 // ---------- Init ----------
 window.addEventListener("load", () => {
-  setDate(todayLocalStr());
-  wireDatePicker();
+  setDateFor("dateInput", "dateDisplay", todayLocalStr());
+  wireDatePicker("dateInput", "dateDisplay");
+  wireDatePicker("editDateInput", "editDateDisplay");
+  wireDatePicker("exportFromInput", "exportFromDisplay");
+  wireDatePicker("exportToInput", "exportToDisplay");
   buildWeaponList();
   wireStaticEvents();
 
@@ -50,14 +53,14 @@ function formatDateDisplay(isoStr) {
   return `${y}/${m}/${d}`;
 }
 
-function setDate(isoStr) {
-  document.getElementById("dateInput").value = isoStr;
-  document.getElementById("dateDisplay").textContent = formatDateDisplay(isoStr);
+function setDateFor(inputId, displayId, isoStr) {
+  document.getElementById(inputId).value = isoStr;
+  document.getElementById(displayId).textContent = formatDateDisplay(isoStr);
 }
 
-function wireDatePicker() {
-  const dateInput = document.getElementById("dateInput");
-  const dateDisplay = document.getElementById("dateDisplay");
+function wireDatePicker(inputId, displayId) {
+  const dateInput = document.getElementById(inputId);
+  const dateDisplay = document.getElementById(displayId);
 
   dateDisplay.addEventListener("click", () => {
     if (dateInput.showPicker) {
@@ -83,6 +86,22 @@ function wireStaticEvents() {
   document.getElementById("refreshBtn").addEventListener("click", loadRecent);
   document.querySelectorAll(".mode-btn").forEach(btn => {
     btn.addEventListener("click", () => setMode(btn.dataset.mode));
+  });
+
+  // Redigeringsoverlay
+  document.getElementById("editCancelBtn").addEventListener("click", closeEditOverlay);
+  document.getElementById("editSaveBtn").addEventListener("click", saveEditedRow);
+  document.getElementById("editDeleteBtn").addEventListener("click", deleteEditedRow);
+  document.getElementById("editOverlay").addEventListener("click", e => {
+    if (e.target.id === "editOverlay") closeEditOverlay();
+  });
+
+  // Exportoverlay
+  document.getElementById("exportPdfBtn").addEventListener("click", openExportOverlay);
+  document.getElementById("exportCancelBtn").addEventListener("click", closeExportOverlay);
+  document.getElementById("exportGenerateBtn").addEventListener("click", generatePdf);
+  document.getElementById("exportOverlay").addEventListener("click", e => {
+    if (e.target.id === "exportOverlay") closeExportOverlay();
   });
 }
 
@@ -150,6 +169,8 @@ async function loadSheetMeta() {
   sheetGridId = first.sheetId;
 }
 
+let recentRowsCache = {}; // radnummer (1-indexerat i arket) -> radens värden
+
 async function loadRecent() {
   const list = document.getElementById("recentList");
   list.innerHTML = `<p class="muted small">Laddar...</p>`;
@@ -158,22 +179,33 @@ async function loadRecent() {
     const data = await sheetsFetch(
       `${CONFIG.SPREADSHEET_ID}/values/${range}`
     );
-    const rows = (data.values || []).slice(-8).reverse();
+    const allRows = data.values || [];
+    // Arket sorteras redan nyast-först vid varje loggning (se sortSheetByDateDesc),
+    // så de FÖRSTA raderna är de senaste - ingen omvändning behövs.
+    const rows = allRows.slice(0, 8);
+    recentRowsCache = {};
     if (rows.length === 0) {
       list.innerHTML = `<p class="muted small">Inga pass loggade ännu.</p>`;
       return;
     }
-    list.innerHTML = rows.map(rowToCard).join("");
+    list.innerHTML = rows.map((row, i) => {
+      const rowNumber = i + 2; // rad 2 i arket = första dataraden (efter rubriken)
+      recentRowsCache[rowNumber] = row;
+      return rowToCard(row, rowNumber);
+    }).join("");
+    list.querySelectorAll(".recent-item").forEach(el => {
+      el.addEventListener("click", () => openEditOverlay(parseInt(el.dataset.row, 10)));
+    });
   } catch (e) {
     list.innerHTML = `<p class="muted small">Kunde inte hämta: ${escapeHtml(e.message)}</p>`;
   }
 }
 
-function rowToCard(row) {
+function rowToCard(row, rowNumber) {
   const [date, activity, weapon, amount, , note] = row;
   const line2 = [weapon, amount].filter(Boolean).join(" · ");
   return `
-    <div class="recent-item">
+    <div class="recent-item" data-row="${rowNumber}">
       <div class="recent-date mono">${escapeHtml(date || "")}</div>
       <div class="recent-body">
         <div class="recent-activity">${escapeHtml(activity || "")}</div>
@@ -323,7 +355,7 @@ function showToast(msg, isError) {
 function resetForm() {
   document.getElementById("noteInput").value = "";
   document.getElementById("activityTypeInput").value = "";
-  setDate(todayLocalStr());
+  setDateFor("dateInput", "dateDisplay", todayLocalStr());
   document.querySelectorAll(".weapon-chip").forEach(chip => {
     chip.querySelector(".chip-input").checked = false;
     const amountEl = chip.querySelector(".amount");
@@ -333,6 +365,211 @@ function resetForm() {
     if (custom) custom.value = "";
   });
   setMode("training");
+}
+
+// ---------- Redigera / radera loggat pass ----------
+let editingRow = null;
+
+function openEditOverlay(rowNumber) {
+  const row = recentRowsCache[rowNumber];
+  if (!row) return;
+  editingRow = rowNumber;
+  const [date, activity, weapon, amount, , note] = row;
+  setDateFor("editDateInput", "editDateDisplay", date || todayLocalStr());
+  document.getElementById("editActivity").value = activity || "";
+  document.getElementById("editWeapon").value = weapon || "";
+  document.getElementById("editAmount").value = amount || "";
+  document.getElementById("editNote").value = note || "";
+  document.getElementById("editOverlay").classList.remove("hidden");
+}
+
+function closeEditOverlay() {
+  document.getElementById("editOverlay").classList.add("hidden");
+  editingRow = null;
+}
+
+async function saveEditedRow() {
+  if (!editingRow) return;
+  const date = document.getElementById("editDateInput").value;
+  const activity = document.getElementById("editActivity").value.trim();
+  const weapon = document.getElementById("editWeapon").value.trim();
+  const amount = document.getElementById("editAmount").value.trim();
+  const note = document.getElementById("editNote").value;
+
+  if (!date || !activity) {
+    return showToast("Datum och aktivitet krävs.", true);
+  }
+
+  const btn = document.getElementById("editSaveBtn");
+  btn.disabled = true;
+  try {
+    const range = encodeURIComponent(`${sheetTitle}!A${editingRow}:F${editingRow}`);
+    await sheetsFetch(
+      `${CONFIG.SPREADSHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`,
+      { method: "PUT", body: JSON.stringify({ values: [[date, activity, weapon, amount, "MSF", note]] }) }
+    );
+    await sortSheetByDateDesc();
+    showToast("Passet uppdaterat!", false);
+    closeEditOverlay();
+    loadRecent();
+  } catch (e) {
+    showToast("Ett fel uppstod: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deleteEditedRow() {
+  if (!editingRow) return;
+  if (!confirm("Radera det här passet permanent? Går inte att ångra.")) return;
+
+  const btn = document.getElementById("editDeleteBtn");
+  btn.disabled = true;
+  try {
+    await sheetsFetch(`${CONFIG.SPREADSHEET_ID}:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({
+        requests: [{
+          deleteDimension: {
+            range: { sheetId: sheetGridId, dimension: "ROWS", startIndex: editingRow - 1, endIndex: editingRow }
+          }
+        }]
+      })
+    });
+    showToast("Passet raderat.", false);
+    closeEditOverlay();
+    loadRecent();
+  } catch (e) {
+    showToast("Ett fel uppstod: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- PDF-export ----------
+function openExportOverlay() {
+  const today = todayLocalStr();
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - 1);
+  const yearAgo = d.toISOString().slice(0, 10);
+  setDateFor("exportFromInput", "exportFromDisplay", yearAgo);
+  setDateFor("exportToInput", "exportToDisplay", today);
+  document.getElementById("exportOverlay").classList.remove("hidden");
+}
+
+function closeExportOverlay() {
+  document.getElementById("exportOverlay").classList.add("hidden");
+}
+
+async function generatePdf() {
+  const from = document.getElementById("exportFromInput").value;
+  const to = document.getElementById("exportToInput").value;
+  if (!from || !to) return showToast("Välj både från- och till-datum.", true);
+  if (from > to) return showToast("Från-datum måste vara före till-datum.", true);
+
+  const btn = document.getElementById("exportGenerateBtn");
+  btn.disabled = true;
+  showToast("Skapar PDF...", false);
+
+  try {
+    const range = encodeURIComponent(`${sheetTitle}!A2:F`);
+    const data = await sheetsFetch(`${CONFIG.SPREADSHEET_ID}/values/${range}`);
+    const rows = (data.values || [])
+      .filter(r => r[0] && r[0] >= from && r[0] <= to)
+      .sort((a, b) => a[0].localeCompare(b[0])); // kronologisk i PDF:en, äldst först
+
+    if (rows.length === 0) {
+      showToast("Inga pass i det valda intervallet.", true);
+      return;
+    }
+
+    buildPdf(rows, from, to);
+    showToast("PDF skapad!", false);
+    closeExportOverlay();
+  } catch (e) {
+    showToast("Ett fel uppstod: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function buildPdf(rows, from, to) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const marginX = 18;
+  let y = 20;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(20, 20, 20);
+  doc.text("MSF Skyttelogg", marginX, y);
+  y += 8;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(110, 110, 110);
+  doc.text(`Period: ${formatDateDisplay(from)} \u2013 ${formatDateDisplay(to)}`, marginX, y);
+  y += 5;
+  doc.text(`Skapad: ${formatDateDisplay(todayLocalStr())}`, marginX, y);
+  y += 9;
+
+  doc.setDrawColor(196, 145, 94);
+  doc.setLineWidth(0.5);
+  doc.line(marginX, y, pageWidth - marginX, y);
+  y += 9;
+
+  const cols = [
+    { label: "Datum", x: marginX, w: 22 },
+    { label: "Aktivitet", x: marginX + 24, w: 24 },
+    { label: "Vapengrupp/Typ", x: marginX + 50, w: 58 },
+    { label: "Antal", x: marginX + 110, w: 20 },
+    { label: "Notering", x: marginX + 132, w: pageWidth - marginX - (marginX + 132) }
+  ];
+
+  function drawHeader() {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(30, 30, 30);
+    cols.forEach(c => doc.text(c.label, c.x, y));
+    y += 3;
+    doc.setDrawColor(190, 190, 190);
+    doc.setLineWidth(0.2);
+    doc.line(marginX, y, pageWidth - marginX, y);
+    y += 6;
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(50, 50, 50);
+  }
+
+  drawHeader();
+
+  rows.forEach(row => {
+    const [date, activity, weapon, amount, , note] = row;
+    if (y > 275) {
+      doc.addPage();
+      y = 20;
+      drawHeader();
+    }
+    doc.setFontSize(9);
+    doc.text(date || "", cols[0].x, y);
+    doc.text(activity || "", cols[1].x, y, { maxWidth: cols[1].w });
+    doc.text(weapon || "", cols[2].x, y, { maxWidth: cols[2].w });
+    doc.text(amount || "", cols[3].x, y, { maxWidth: cols[3].w });
+    doc.text(note || "", cols[4].x, y, { maxWidth: cols[4].w });
+    y += 7;
+  });
+
+  y += 6;
+  doc.setDrawColor(196, 145, 94);
+  doc.setLineWidth(0.5);
+  doc.line(marginX, y, pageWidth - marginX, y);
+  y += 7;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(20, 20, 20);
+  doc.text(`Totalt antal loggade poster: ${rows.length}`, marginX, y);
+
+  doc.save(`msf-skyttelogg-${from}-till-${to}.pdf`);
 }
 
 // ---------- Submit ----------
