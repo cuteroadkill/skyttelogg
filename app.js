@@ -13,6 +13,17 @@ const DEFAULT_WEAPONS = [
 ];
 let weaponsList = [];
 
+// Fyra kurerade teman + möjlighet att välja valfri egen färg.
+// Bakgrund/text/ytor rörs aldrig - bara accentfärgen (mässing som standard).
+const THEMES = [
+  { id: "brass",  name: "Mässing", hex: "#C4915E", dim: "#8A6740", rgb: "196, 145, 94" },
+  { id: "steel",  name: "Stål",    hex: "#6B9BC3", dim: "#4A6D8C", rgb: "107, 155, 195" },
+  { id: "forest", name: "Skog",    hex: "#7FA65C", dim: "#5A7A3F", rgb: "127, 166, 92" },
+  { id: "wine",   name: "Vinröd",  hex: "#B25A6B", dim: "#7D3E4A", rgb: "178, 90, 107" }
+];
+const THEME_KEY = "msf_theme";
+let currentThemeId = "brass";
+
 let accessToken = null;
 let tokenClient = null;
 let spreadsheetId = null;   // dynamiskt: från config.js ELLER auto-skapat ark
@@ -28,6 +39,7 @@ const HEADER_ROW = ["Datum", "Aktivitet", "Vapengrupp/Typ", "Antal skott", "Plat
 
 // ---------- Init ----------
 window.addEventListener("load", () => {
+  loadSavedTheme();
   setDateFor("dateInput", "dateDisplay", todayLocalStr());
   wireDatePicker("dateInput", "dateDisplay");
   wireDatePicker("editDateInput", "editDateDisplay");
@@ -463,8 +475,93 @@ function buildWeaponList() {
   wireChip(chip, true);
 }
 
+// ---------- Tema ----------
+function hexToRgbTriple(hex) {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.substr(0, 2), 16);
+  const g = parseInt(h.substr(2, 2), 16);
+  const b = parseInt(h.substr(4, 2), 16);
+  return `${r}, ${g}, ${b}`;
+}
+
+function darkenHex(hex, factor) {
+  const h = hex.replace("#", "");
+  const toHex = n => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+  const r = parseInt(h.substr(0, 2), 16) * factor;
+  const g = parseInt(h.substr(2, 2), 16) * factor;
+  const b = parseInt(h.substr(4, 2), 16) * factor;
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function applyThemeColors(hex, dim, rgb, id) {
+  const root = document.documentElement.style;
+  root.setProperty("--brass", hex);
+  root.setProperty("--brass-dim", dim);
+  root.setProperty("--brass-rgb", rgb);
+  currentThemeId = id;
+  updateActiveSwatch();
+}
+
+function selectPresetTheme(id) {
+  const t = THEMES.find(t => t.id === id);
+  if (!t) return;
+  applyThemeColors(t.hex, t.dim, t.rgb, t.id);
+  localStorage.setItem(THEME_KEY, JSON.stringify({ id: t.id, hex: t.hex }));
+}
+
+function selectCustomTheme(hex) {
+  applyThemeColors(hex, darkenHex(hex, 0.62), hexToRgbTriple(hex), "custom");
+  localStorage.setItem(THEME_KEY, JSON.stringify({ id: "custom", hex }));
+}
+
+function loadSavedTheme() {
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem(THEME_KEY) || "null"); }
+  catch (e) { saved = null; }
+  if (!saved) return;
+
+  if (saved.id === "custom" && saved.hex) {
+    applyThemeColors(saved.hex, darkenHex(saved.hex, 0.62), hexToRgbTriple(saved.hex), "custom");
+  } else {
+    const t = THEMES.find(t => t.id === saved.id);
+    if (t) applyThemeColors(t.hex, t.dim, t.rgb, t.id);
+  }
+}
+
+function renderThemeSwatches() {
+  const container = document.getElementById("themeSwatches");
+  const customHex = currentThemeId === "custom"
+    ? (JSON.parse(localStorage.getItem(THEME_KEY) || "{}").hex || "#C4915E")
+    : "#C4915E";
+
+  container.innerHTML = THEMES.map(t => `
+    <button type="button" class="theme-swatch" data-theme="${t.id}" style="background:${t.hex}" title="${t.name}" aria-label="${t.name}"></button>
+  `).join("") + `
+    <label class="theme-swatch theme-swatch--custom" title="Egen färg" aria-label="Egen färg">
+      <input type="color" id="customThemeInput" value="${customHex}">
+    </label>
+  `;
+
+  container.querySelectorAll(".theme-swatch[data-theme]").forEach(btn => {
+    btn.addEventListener("click", () => selectPresetTheme(btn.dataset.theme));
+  });
+  document.getElementById("customThemeInput").addEventListener("input", e => {
+    selectCustomTheme(e.target.value);
+  });
+  updateActiveSwatch();
+}
+
+function updateActiveSwatch() {
+  document.querySelectorAll(".theme-swatch[data-theme]").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.theme === currentThemeId);
+  });
+  const customSwatch = document.querySelector(".theme-swatch--custom");
+  if (customSwatch) customSwatch.classList.toggle("active", currentThemeId === "custom");
+}
+
 // ---------- Hantera vapen (overlay) ----------
 function openWeaponsOverlay() {
+  renderThemeSwatches();
   renderWeaponsManageList();
   document.getElementById("weaponsOverlay").classList.remove("hidden");
 }
