@@ -4,22 +4,36 @@ En snygg, installerbar PWA som loggar direkt mot ditt eget Google Sheet.
 Varje person kör sin egen version — eget kalkylark, eget Google Cloud-projekt,
 egen GitHub Pages-sida. Ingen delar data med någon annan.
 
-## 1. Skapa ditt eget Google Sheet
+## 0. Hämta filerna
 
-1. Gå till [sheets.google.com](https://sheets.google.com) → skapa ett nytt, tomt kalkylark.
-2. På **rad 1**, skriv in exakt dessa sex rubriker, **i exakt den här ordningen**,
-   en per kolumn (A till F):
-   ```
-   Datum | Aktivitet | Vapengrupp/Typ | Antal skott | Plats/Förening | Notering
-   ```
-   Detta är viktigt: appen skriver till kolumnerna efter **position** (A, B, C...),
-   inte efter rubriknamn. Fel ordning eller en kolumn för mycket/lite gör att
-   data hamnar fel, utan att appen visar något felmeddelande.
-3. Döp om arket till något du känner igen, t.ex. "Min Skyttelogg".
-4. Döp om fliken längst ner (dubbelklicka på "Blad1") till t.ex. "Loggbok" —
-   spelar ingen roll vad den heter, bara att det **bara finns en flik**.
-5. Kopiera arkets ID ur adressfältet, du behöver det i steg 3:
-   `https://docs.google.com/spreadsheets/d/DETTA_ÄR_ID:T/edit`
+Fick du den här guiden tillsammans med en zip-fil? Packa upp den och gå
+vidare till steg 1.
+
+Fick du istället en länk till någon annans GitHub-repo (t.ex.
+`github.com/personens-användarnamn/skyttelogg`)? Gå till repot →
+**Code**-knappen (grön, nära fillistan) → **Download ZIP**. Packa upp den
+nedladdade filen — det ger dig exakt samma filer som en delad zip skulle,
+fast direkt från källan. Du behöver inte skapa konto hos den personen eller
+be om tillgång till något; det är ett publikt repo.
+
+## 1. Kalkylarket — låt appen skapa det, eller peka på ett du redan har
+
+**Enklast: gör ingenting här.** Lämna `SPREADSHEET_ID` i `config.js` som en tom
+sträng (`""`) — se steg 3. Appen skapar då automatiskt ett nytt Google Sheet
+åt dig, med rätt rubriker redan ifyllda, **första gången du loggar in**. Du
+behöver aldrig röra Google Sheets manuellt.
+
+**Har du redan ett ark** (t.ex. om du migrerar från en tidigare version av
+appen och vill fortsätta på samma historik): hoppa över auto-skapandet genom
+att fylla i `SPREADSHEET_ID` i steg 3 istället. Kontrollera då att rad 1 har
+exakt dessa sex rubriker, i exakt den här ordningen (A till F):
+```
+Datum | Aktivitet | Vapengrupp/Typ | Antal skott | Plats/Förening | Notering
+```
+Detta är viktigt: appen skriver till kolumnerna efter **position**, inte
+efter rubriknamn. Fel ordning eller en kolumn för mycket/lite gör att data
+hamnar fel, utan att appen visar något felmeddelande. Kopiera även arkets ID
+ur adressfältet: `https://docs.google.com/spreadsheets/d/DETTA_ÄR_ID:T/edit`
 
 ## 2. Skapa Google Cloud-projekt (engångsjobb, ~15 min)
 
@@ -44,11 +58,19 @@ egen GitHub Pages-sida. Ingen delar data med någon annan.
 
 ## 3. Fyll i config.js
 
-Öppna `config.js` och klistra in:
+Öppna `config.js`. **Om filen redan innehåller värden** (t.ex. för att du fick
+den genom att kopiera någon annans repo snarare än en tom mall) — det är
+**deras** uppgifter, inte dina. Radera båda raderna och fyll i dina egna:
 - `CLIENT_ID` — det du kopierade i steg 2. Kopiera det **direkt från Cloud Console**,
   inte genom att skriva av för hand — och kolla att du inte råkat klistra in det
   två gånger i rad (lätt hänt, och ger felet "OAuth client was not found").
-- `SPREADSHEET_ID` — ID:t du kopierade i steg 1.
+- `SPREADSHEET_ID` — lämna som tom sträng (`""`) för att låta appen skapa ett
+  nytt ark automatiskt, eller klistra in ID:t från steg 1 om du redan har ett
+  befintligt ark du vill använda.
+
+En ifylld `config.js` är **aldrig** rätt att använda som den är — den pekar
+alltid mot en specifik person. Byt ut båda värdena, även om de redan ser
+kompletta och fungerande ut.
 
 ## 4. Lägg upp på GitHub Pages
 
@@ -102,6 +124,11 @@ sidan visar bara tyst den gamla versionen.
 - **Data visas inte / "Kunde inte läsa kalkylarket"**: dubbelkolla att
   `SPREADSHEET_ID` i `config.js` stämmer, och att kontot du loggar in med har
   redigeringsåtkomst till arket.
+- **Appen skapade ett nytt, tomt ark trots att jag redan hade ett**: `SPREADSHEET_ID`
+  i `config.js` var tomt när du loggade in första gången. Öppna det nya arket
+  (länken "Öppna kalkylarket" i appen), radera det om du inte vill ha det kvar,
+  klistra in ditt riktiga ID i `config.js` istället, och rensa webbläsarens
+  data för sidan en gång (annars minns den fortfarande det tomma arket).
 - **En uppdatering syns inte i appen**: testa alltid i ett inkognitofönster
   först — syns ändringen där men inte i din vanliga flik eller installerade
   app, är det en cache-fråga snarare än att filen är fel. Stäng och öppna
