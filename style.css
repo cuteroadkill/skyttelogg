@@ -102,13 +102,48 @@ body {
 .weapon-manage-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  padding: 12px 4px;
+  padding: 10px 4px;
   border-bottom: 1px solid var(--line-soft);
   font-size: 14.5px;
+  touch-action: pan-y;
 }
 .weapon-manage-row:last-child { border-bottom: none; }
+.weapon-manage-row.favorite { background: rgba(196, 145, 94, 0.08); }
+.weapon-manage-row.dragging {
+  position: relative;
+  z-index: 30;
+  background: var(--surface-raised);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  border-radius: 8px;
+}
+.weapon-drag-handle {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+.weapon-star-btn {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  background: none;
+  border: none;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--brass);
+  cursor: pointer;
+}
+.weapon-manage-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .weapon-remove-btn {
   width: 28px; height: 28px;
   flex-shrink: 0;
