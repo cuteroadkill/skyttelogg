@@ -86,11 +86,77 @@
       </div>
 
       <a id="sheetLink" href="#" target="_blank" class="sheet-link">Öppna kalkylarket →</a>
+      <button id="exportPdfBtn" class="text-btn export-btn">Exportera till PDF</button>
 
     </section>
 
+    <!-- Redigera pass -->
+    <div id="editOverlay" class="overlay hidden">
+      <div class="overlay-panel">
+        <h2>Redigera pass</h2>
+
+        <div class="field-group">
+          <label for="editDateInput">Datum</label>
+          <div class="date-wrap">
+            <button type="button" id="editDateDisplay" class="input mono date-display"></button>
+            <input type="date" id="editDateInput" class="date-input-hidden" tabindex="-1" aria-hidden="true">
+          </div>
+        </div>
+        <div class="field-group">
+          <label for="editActivity">Aktivitet</label>
+          <input type="text" id="editActivity" class="input">
+        </div>
+        <div class="field-group">
+          <label for="editWeapon">Vapengrupp/Typ</label>
+          <input type="text" id="editWeapon" class="input">
+        </div>
+        <div class="field-group">
+          <label for="editAmount">Antal skott</label>
+          <input type="text" id="editAmount" class="input">
+        </div>
+        <div class="field-group">
+          <label for="editNote">Notering</label>
+          <input type="text" id="editNote" class="input">
+        </div>
+
+        <div class="overlay-actions">
+          <button id="editDeleteBtn" class="btn btn-danger">Radera</button>
+          <button id="editCancelBtn" class="btn btn-secondary">Avbryt</button>
+          <button id="editSaveBtn" class="btn btn-primary">Spara</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Exportera PDF -->
+    <div id="exportOverlay" class="overlay hidden">
+      <div class="overlay-panel">
+        <h2>Exportera till PDF</h2>
+
+        <div class="field-group">
+          <label for="exportFromInput">Från</label>
+          <div class="date-wrap">
+            <button type="button" id="exportFromDisplay" class="input mono date-display"></button>
+            <input type="date" id="exportFromInput" class="date-input-hidden" tabindex="-1" aria-hidden="true">
+          </div>
+        </div>
+        <div class="field-group">
+          <label for="exportToInput">Till</label>
+          <div class="date-wrap">
+            <button type="button" id="exportToDisplay" class="input mono date-display"></button>
+            <input type="date" id="exportToInput" class="date-input-hidden" tabindex="-1" aria-hidden="true">
+          </div>
+        </div>
+
+        <div class="overlay-actions">
+          <button id="exportCancelBtn" class="btn btn-secondary">Avbryt</button>
+          <button id="exportGenerateBtn" class="btn btn-primary">Skapa PDF</button>
+        </div>
+      </div>
+    </div>
+
   </main>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.0.0/jspdf.umd.min.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="config.js"></script>
   <script src="app.js"></script>
