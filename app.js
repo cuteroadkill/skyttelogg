@@ -12,9 +12,13 @@ const WEAPONS = [
 
 let accessToken = null;
 let tokenClient = null;
+let spreadsheetId = null;   // dynamiskt: från config.js ELLER auto-skapat ark
 let sheetTitle = null;   // fliknamnet, hämtas en gång vid inloggning
 let sheetGridId = null;  // numeriskt sheetId, används för sortering
 let currentMode = "training";
+
+const LOCAL_SHEET_KEY = "msf_spreadsheet_id";
+const HEADER_ROW = ["Datum", "Aktivitet", "Vapengrupp/Typ", "Antal skott", "Plats/Förening", "Notering"];
 
 // ---------- Init ----------
 window.addEventListener("load", () => {
@@ -116,13 +120,66 @@ async function onTokenReceived(resp) {
   document.getElementById("signOutBtn").classList.remove("hidden");
 
   try {
+    await ensureSpreadsheet();
     await loadSheetMeta();
     document.getElementById("sheetLink").href =
-      `https://docs.google.com/spreadsheets/d/${CONFIG.SPREADSHEET_ID}/edit`;
+      `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
     loadRecent();
   } catch (e) {
     showToast("Kunde inte läsa kalkylarket: " + e.message, true);
   }
+}
+
+// Om config.js redan pekar på ett befintligt ark (SPREADSHEET_ID ifyllt) används det.
+// Annars: kolla om vi skapat ett åt den här personen tidigare (localStorage på
+// den här enheten). Finns inget av delarna - skapa ett nytt ark automatiskt,
+// med rätt rubriker redan på plats, och kom ihåg det till nästa gång.
+async function ensureSpreadsheet() {
+  if (CONFIG.SPREADSHEET_ID) {
+    spreadsheetId = CONFIG.SPREADSHEET_ID;
+    return;
+  }
+  const stored = localStorage.getItem(LOCAL_SHEET_KEY);
+  if (stored) {
+    spreadsheetId = stored;
+    return;
+  }
+
+  showToast("Skapar ditt kalkylark...", false);
+
+  const created = await sheetsFetch("", {
+    method: "POST",
+    body: JSON.stringify({
+      properties: { title: "MSF Skyttelogg" },
+      sheets: [{ properties: { title: "Loggbok" } }]
+    })
+  });
+  spreadsheetId = created.spreadsheetId;
+
+  const headerRange = encodeURIComponent("Loggbok!A1:F1");
+  await sheetsFetch(
+    `${spreadsheetId}/values/${headerRange}?valueInputOption=USER_ENTERED`,
+    { method: "PUT", body: JSON.stringify({ values: [HEADER_ROW] }) }
+  );
+
+  // Fetstil på rubrikraden - litet estetiskt plus, inget kritiskt om det misslyckas
+  try {
+    await sheetsFetch(`${spreadsheetId}:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({
+        requests: [{
+          repeatCell: {
+            range: { sheetId: 0, startRowIndex: 0, endRowIndex: 1 },
+            cell: { userEnteredFormat: { textFormat: { bold: true } } },
+            fields: "userEnteredFormat.textFormat.bold"
+          }
+        }]
+      })
+    });
+  } catch (e) { /* kosmetiskt, strunta i fel här */ }
+
+  localStorage.setItem(LOCAL_SHEET_KEY, spreadsheetId);
+  showToast("Ditt kalkylark är klart!", false);
 }
 
 function signOut() {
@@ -139,7 +196,8 @@ function signOut() {
 const SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 
 async function sheetsFetch(path, options = {}) {
-  const res = await fetch(`${SHEETS_BASE}/${path}`, {
+  const url = path ? `${SHEETS_BASE}/${path}` : SHEETS_BASE;
+  const res = await fetch(url, {
     ...options,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -162,7 +220,7 @@ async function sheetsFetch(path, options = {}) {
 
 async function loadSheetMeta() {
   const data = await sheetsFetch(
-    `${CONFIG.SPREADSHEET_ID}?fields=sheets.properties`
+    `${spreadsheetId}?fields=sheets.properties`
   );
   const first = data.sheets[0].properties;
   sheetTitle = first.title;
@@ -177,7 +235,7 @@ async function loadRecent() {
   try {
     const range = encodeURIComponent(`${sheetTitle}!A2:F`);
     const data = await sheetsFetch(
-      `${CONFIG.SPREADSHEET_ID}/values/${range}`
+      `${spreadsheetId}/values/${range}`
     );
     const allRows = data.values || [];
     // Arket sorteras redan nyast-först vid varje loggning (se sortSheetByDateDesc),
@@ -224,13 +282,13 @@ function escapeHtml(s) {
 async function appendRows(rows) {
   const range = encodeURIComponent(`${sheetTitle}!A:F`);
   await sheetsFetch(
-    `${CONFIG.SPREADSHEET_ID}/values/${range}:append?valueInputOption=USER_ENTERED`,
+    `${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
     { method: "POST", body: JSON.stringify({ values: rows }) }
   );
 }
 
 async function sortSheetByDateDesc() {
-  await sheetsFetch(`${CONFIG.SPREADSHEET_ID}:batchUpdate`, {
+  await sheetsFetch(`${spreadsheetId}:batchUpdate`, {
     method: "POST",
     body: JSON.stringify({
       requests: [{
@@ -405,7 +463,7 @@ async function saveEditedRow() {
   try {
     const range = encodeURIComponent(`${sheetTitle}!A${editingRow}:F${editingRow}`);
     await sheetsFetch(
-      `${CONFIG.SPREADSHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`,
+      `${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
       { method: "PUT", body: JSON.stringify({ values: [[date, activity, weapon, amount, "MSF", note]] }) }
     );
     await sortSheetByDateDesc();
@@ -426,7 +484,7 @@ async function deleteEditedRow() {
   const btn = document.getElementById("editDeleteBtn");
   btn.disabled = true;
   try {
-    await sheetsFetch(`${CONFIG.SPREADSHEET_ID}:batchUpdate`, {
+    await sheetsFetch(`${spreadsheetId}:batchUpdate`, {
       method: "POST",
       body: JSON.stringify({
         requests: [{
@@ -473,7 +531,7 @@ async function generatePdf() {
 
   try {
     const range = encodeURIComponent(`${sheetTitle}!A2:F`);
-    const data = await sheetsFetch(`${CONFIG.SPREADSHEET_ID}/values/${range}`);
+    const data = await sheetsFetch(`${spreadsheetId}/values/${range}`);
     const rows = (data.values || [])
       .filter(r => r[0] && r[0] >= from && r[0] <= to)
       .sort((a, b) => a[0].localeCompare(b[0])); // kronologisk i PDF:en, äldst först
