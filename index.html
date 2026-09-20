@@ -44,7 +44,10 @@
       <!-- Datum -->
       <div class="field-group">
         <label for="dateInput">Datum</label>
-        <input type="date" id="dateInput" class="input mono">
+        <div class="date-wrap">
+          <button type="button" id="dateDisplay" class="input mono date-display"></button>
+          <input type="date" id="dateInput" class="date-input-hidden" tabindex="-1" aria-hidden="true">
+        </div>
       </div>
 
       <!-- Lägesväxlare -->
