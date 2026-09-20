@@ -4,6 +4,11 @@ En snygg, installerbar PWA som loggar direkt mot ditt eget Google Sheet.
 Varje person kör sin egen version — eget kalkylark, eget Google Cloud-projekt,
 egen GitHub Pages-sida. Ingen delar data med någon annan.
 
+> **Kör du istället en delad app** (en person hostar, flera loggar in med sina
+> egna Google-konton)? Det mesta nedan gäller fortfarande koden och filerna,
+> men själva uppsättningen skiljer sig — se avsnittet **"Delad app-modell"**
+> längst ner i den här filen istället för steg 1–5.
+
 ## 0. Hämta filerna
 
 Fick du den här guiden tillsammans med en zip-fil? Packa upp den och gå
@@ -148,3 +153,63 @@ sidan visar bara tyst den gamla versionen.
   först — syns ändringen där men inte i din vanliga flik eller installerade
   app, är det en cache-fråga snarare än att filen är fel. Stäng och öppna
   appen på nytt; det brukar räcka.
+
+---
+
+## Delad app-modell (en person hostar, flera loggar in)
+
+I stället för att varje person kör sin egen fristående installation kan **en**
+person ("värden") hosta appen och Cloud-projektet, medan alla andra bara
+loggar in med sitt eget Google-konto. Var och en får ett eget kalkylark i sin
+egen Drive — det är bara koden och webbadressen som är gemensam.
+
+### Skillnaden mot att köra en egen fristående version
+
+- `config.js` har **`SPREADSHEET_ID: ""`** permanent — aldrig ifyllt, för
+  ingen (inte ens värden) ska peka mot ett hårdkodat ark.
+- `SCOPES` innehåller en extra behörighet:
+  `https://www.googleapis.com/auth/drive.metadata.readonly` — läser bara
+  filnamn i personens Drive (för att hitta rätt ark automatiskt på en ny
+  telefon), kan aldrig läsa filers innehåll.
+- Appen skapar automatiskt ett ark med namnet **"MSF Skyttelogg"** i den
+  inloggade personens Drive första gången, och hittar samma ark automatiskt
+  igen på vilken enhet som helst — ingen behöver komma ihåg något ID.
+
+### Värdens engångsuppsättning
+
+1. **Döp om ditt befintliga ark** (om du redan har ett du vill fortsätta
+   använda) till exakt **"MSF Skyttelogg"** i Google Sheets/Drive. Det gör
+   att appen hittar just ditt gamla ark automatiskt istället för att skapa
+   ett nytt, tomt.
+2. **Cloud Console → Google Auth Platform → Data Access** → lägg till
+   scopet `https://www.googleapis.com/auth/drive.metadata.readonly` utöver
+   det befintliga `spreadsheets`-scopet → Save.
+3. **Cloud Console → Google Auth Platform → Audience** → lägg till dina
+   medanvändares Gmail-adresser under **Test users**.
+4. Uppdatera `config.js`, `index.html` och `app.js` i ditt repo till de
+   senaste versionerna.
+5. Logga in i appen igen (du får se en uppdaterad behörighetsruta eftersom
+   ett nytt scope tillkommit — helt väntat, godkänn den).
+
+### Att bjuda in en ny person
+
+Skicka bara länken till appen. De behöver **inget** eget Google Cloud-projekt,
+**inget** GitHub, **ingen** `config.js` att fylla i — bara logga in med sitt
+eget Google-konto (efter att du lagt till deras Gmail som testanvändare i
+steg 3 ovan). Deras ark skapas automatiskt vid första inloggning.
+
+### "Peka om till befintligt ark"
+
+Under kugghjulet → **Ark** finns ett fält där man manuellt kan ange ett
+kalkylarks-ID eller länk. Används normalt aldrig (auto-sökningen sköter det),
+men fungerar som reservväg om något går fel, eller om någon vill koppla
+appen till ett specifikt äldre ark istället för det som annars skulle
+hittas/skapas automatiskt.
+
+### Begränsning värt att känna till
+
+Eftersom alla loggar in mot **samma** Google Cloud-projekt (i "Testing"-läge)
+behöver var och en klicka igenom Googles påminnelse-inloggning ungefär varje
+vecka — samma sak som gäller för en fristående installation, bara att det nu
+gäller alla i gruppen, inte bara värden. Inget att åtgärda, bara vänta ut
+klicket.
