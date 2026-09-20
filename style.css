@@ -332,7 +332,10 @@ body {
   gap: 14px;
   padding: 14px 2px;
   border-bottom: 1px solid var(--line-soft);
+  cursor: pointer;
+  transition: background-color 0.12s ease;
 }
+.recent-item:active { background-color: rgba(196, 145, 94, 0.08); }
 .recent-item:last-child { border-bottom: none; }
 .recent-date {
   font-size: 12px;
@@ -375,3 +378,58 @@ body {
 .toast.visible { opacity: 1; transform: translate(-50%, 0); }
 .toast-success { background: var(--success); color: #10240F; }
 .toast-error { background: var(--danger); color: #2A0D08; }
+
+/* ---------- Export button ---------- */
+.export-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+/* ---------- Overlays / modals ---------- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 11, 13, 0.72);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 60;
+}
+.overlay-panel {
+  width: 100%;
+  max-width: 440px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  padding: 24px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+.overlay-panel h2 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0 0 18px;
+}
+.overlay-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+.overlay-actions .btn { flex: 1; padding: 13px; font-size: 14px; }
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text-secondary);
+}
+.btn-danger {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  flex: 0 0 auto !important;
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
