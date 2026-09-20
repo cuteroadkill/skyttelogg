@@ -18,7 +18,8 @@ let currentMode = "training";
 
 // ---------- Init ----------
 window.addEventListener("load", () => {
-  document.getElementById("dateInput").value = todayLocalStr();
+  setDate(todayLocalStr());
+  wireDatePicker();
   buildWeaponList();
   wireStaticEvents();
 
@@ -42,6 +43,34 @@ function todayLocalStr() {
   const d = new Date();
   const tzOffset = d.getTimezoneOffset() * 60000;
   return new Date(d - tzOffset).toISOString().slice(0, 10);
+}
+
+function formatDateDisplay(isoStr) {
+  const [y, m, d] = isoStr.split("-");
+  return `${y}/${m}/${d}`;
+}
+
+function setDate(isoStr) {
+  document.getElementById("dateInput").value = isoStr;
+  document.getElementById("dateDisplay").textContent = formatDateDisplay(isoStr);
+}
+
+function wireDatePicker() {
+  const dateInput = document.getElementById("dateInput");
+  const dateDisplay = document.getElementById("dateDisplay");
+
+  dateDisplay.addEventListener("click", () => {
+    if (dateInput.showPicker) {
+      dateInput.showPicker();
+    } else {
+      dateInput.focus();
+      dateInput.click();
+    }
+  });
+
+  dateInput.addEventListener("change", () => {
+    if (dateInput.value) dateDisplay.textContent = formatDateDisplay(dateInput.value);
+  });
 }
 
 // ---------- Inloggning ----------
@@ -294,7 +323,7 @@ function showToast(msg, isError) {
 function resetForm() {
   document.getElementById("noteInput").value = "";
   document.getElementById("activityTypeInput").value = "";
-  document.getElementById("dateInput").value = todayLocalStr();
+  setDate(todayLocalStr());
   document.querySelectorAll(".weapon-chip").forEach(chip => {
     chip.querySelector(".chip-input").checked = false;
     const amountEl = chip.querySelector(".amount");
