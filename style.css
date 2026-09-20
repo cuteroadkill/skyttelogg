@@ -9,6 +9,7 @@
   --text-muted: #6B6E74;
   --brass: #C4915E;
   --brass-dim: #8A6740;
+  --brass-rgb: 196, 145, 94;
   --danger: #D4695A;
   --success: #7FAE84;
   --radius: 10px;
@@ -54,7 +55,7 @@ body {
   width: 10px; height: 10px;
   border-radius: 50%;
   background: var(--brass);
-  box-shadow: 0 0 0 3px rgba(196, 145, 94, 0.18);
+  box-shadow: 0 0 0 3px rgba(var(--brass-rgb), 0.18);
 }
 .brand-text {
   font-family: 'JetBrains Mono', monospace;
@@ -109,7 +110,7 @@ body {
   touch-action: pan-y;
 }
 .weapon-manage-row:last-child { border-bottom: none; }
-.weapon-manage-row.favorite { background: rgba(196, 145, 94, 0.08); }
+.weapon-manage-row.favorite { background: rgba(var(--brass-rgb), 0.08); }
 .weapon-manage-row.dragging {
   position: relative;
   z-index: 30;
@@ -363,7 +364,7 @@ body {
   color: var(--text);
 }
 .weapon-chip:has(.chip-input:checked) {
-  background: rgba(196, 145, 94, 0.12);
+  background: rgba(var(--brass-rgb), 0.12);
   border-color: var(--brass);
 }
 .custom-name {
@@ -421,7 +422,7 @@ body {
   cursor: pointer;
   transition: background-color 0.12s ease;
 }
-.recent-item:active { background-color: rgba(196, 145, 94, 0.08); }
+.recent-item:active { background-color: rgba(var(--brass-rgb), 0.08); }
 .recent-item:last-child { border-bottom: none; }
 .recent-date {
   font-size: 12px;
@@ -505,6 +506,45 @@ body {
   margin-top: 6px;
 }
 .overlay-actions .btn { flex: 1; padding: 13px; font-size: 14px; }
+
+.settings-subhead {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  margin: 20px 0 10px;
+}
+.settings-subhead:first-of-type { margin-top: 0; }
+
+.theme-swatches {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.theme-swatch {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+.theme-swatch.active { border-color: var(--text); }
+.theme-swatch--custom {
+  overflow: hidden;
+  background: conic-gradient(from 0deg, #E24B4A, #BA7517, #639922, #185FA5, #7F77DD, #D85A30, #E24B4A);
+}
+.theme-swatch--custom input[type="color"] {
+  opacity: 0;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
 
 .btn-secondary {
   background: transparent;
