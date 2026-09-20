@@ -186,6 +186,33 @@ body {
   border-color: var(--brass-dim);
 }
 
+.date-wrap { position: relative; }
+.date-display {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  padding-right: 40px;
+}
+.date-display::after {
+  content: "▾";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--brass);
+  font-size: 12px;
+}
+.date-input-hidden {
+  position: absolute;
+  top: 0; left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  border: none;
+}
+
 /* ---------- Mode switch ---------- */
 .mode-switch {
   display: grid;
