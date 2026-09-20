@@ -192,71 +192,60 @@ function buildWeaponList() {
   const container = document.getElementById("weaponList");
   container.innerHTML = "";
 
-  WEAPONS.forEach(w => container.appendChild(weaponRow(w.value, w.label)));
+  WEAPONS.forEach(w => container.appendChild(weaponChip(w.value, w.label)));
 
-  // Fritextrad för valfritt vapen
-  const row = document.createElement("div");
-  row.className = "weapon-row";
-  row.dataset.weapon = "";
-  row.innerHTML = `
-    <input type="checkbox" class="weapon-check">
+  // Fritextchip för valfritt vapen
+  const chip = document.createElement("label");
+  chip.className = "weapon-chip weapon-chip--custom";
+  chip.dataset.weapon = "";
+  chip.innerHTML = `
+    <input type="checkbox" class="chip-input">
     <input type="text" class="input custom-name" placeholder="Annat vapen...">
-    <div class="stepper disabled">
+    <span class="chip-stepper">
       <button type="button" class="step-btn" data-delta="-0.5">−</button>
       <span class="amount mono" data-val="1">1</span>
       <button type="button" class="step-btn" data-delta="0.5">+</button>
-    </div>`;
-  container.appendChild(row);
-
-  wireWeaponRow(row, true);
+    </span>`;
+  container.appendChild(chip);
+  wireChip(chip, true);
 }
 
-function weaponRow(value, label) {
-  const row = document.createElement("div");
-  row.className = "weapon-row";
-  row.dataset.weapon = value;
-  row.innerHTML = `
-    <label class="weapon-label">
-      <input type="checkbox" class="weapon-check">
-      <span>${label}</span>
-    </label>
-    <div class="stepper disabled">
+function weaponChip(value, label) {
+  const chip = document.createElement("label");
+  chip.className = "weapon-chip";
+  chip.dataset.weapon = value;
+  chip.innerHTML = `
+    <input type="checkbox" class="chip-input">
+    <span class="chip-label">${label}</span>
+    <span class="chip-stepper">
       <button type="button" class="step-btn" data-delta="-0.5">−</button>
       <span class="amount mono" data-val="1">1</span>
       <button type="button" class="step-btn" data-delta="0.5">+</button>
-    </div>`;
-  wireWeaponRow(row, false);
-  return row;
+    </span>`;
+  wireChip(chip, false);
+  return chip;
 }
 
-function wireWeaponRow(row, isCustom) {
-  const cb = row.querySelector(".weapon-check");
-  const stepper = row.querySelector(".stepper");
-  const amountEl = row.querySelector(".amount");
-  const buttons = row.querySelectorAll(".step-btn");
-
-  function setActive(active) {
-    stepper.classList.toggle("disabled", !active);
-    buttons.forEach(b => b.disabled = !active);
-    row.classList.toggle("active", active);
-  }
-
-  cb.addEventListener("change", () => setActive(cb.checked));
+function wireChip(chip, isCustom) {
+  const cb = chip.querySelector(".chip-input");
+  const amountEl = chip.querySelector(".amount");
+  const buttons = chip.querySelectorAll(".step-btn");
 
   if (isCustom) {
-    const nameInput = row.querySelector(".custom-name");
+    const nameInput = chip.querySelector(".custom-name");
+    // Skriver man i fältet räknas raden som vald - annars måste man
+    // kryssa i den manuellt trots att den saknar synlig kryssruta
+    nameInput.addEventListener("click", e => e.stopPropagation());
     nameInput.addEventListener("input", () => {
-      const has = nameInput.value.trim().length > 0;
-      cb.checked = has;
-      setActive(has);
+      cb.checked = nameInput.value.trim().length > 0;
     });
   }
 
   buttons.forEach(btn => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", e => {
+      e.preventDefault(); // hindra att klicket också togglar kryssrutan via label
       if (!cb.checked) {
         cb.checked = true;
-        setActive(true);
         if (parseFloat(btn.dataset.delta) < 0) return;
       }
       let val = parseFloat(amountEl.dataset.val);
@@ -306,17 +295,13 @@ function resetForm() {
   document.getElementById("noteInput").value = "";
   document.getElementById("activityTypeInput").value = "";
   document.getElementById("dateInput").value = todayLocalStr();
-  document.querySelectorAll(".weapon-row").forEach(row => {
-    const cb = row.querySelector(".weapon-check");
-    cb.checked = false;
-    const amountEl = row.querySelector(".amount");
+  document.querySelectorAll(".weapon-chip").forEach(chip => {
+    chip.querySelector(".chip-input").checked = false;
+    const amountEl = chip.querySelector(".amount");
     amountEl.dataset.val = 1;
     amountEl.textContent = "1";
-    const custom = row.querySelector(".custom-name");
+    const custom = chip.querySelector(".custom-name");
     if (custom) custom.value = "";
-    row.classList.remove("active");
-    row.querySelector(".stepper").classList.add("disabled");
-    row.querySelectorAll(".step-btn").forEach(b => b.disabled = true);
   });
   setMode("training");
 }
@@ -334,16 +319,16 @@ async function submitLog() {
     activity = (currentMode === "competition") ? "Tävling" : "Träning";
     let customError = false;
 
-    document.querySelectorAll(".weapon-row").forEach(row => {
-      const cb = row.querySelector(".weapon-check");
+    document.querySelectorAll(".weapon-chip").forEach(chip => {
+      const cb = chip.querySelector(".chip-input");
       if (!cb.checked) return;
-      let weapon = row.dataset.weapon;
-      const custom = row.querySelector(".custom-name");
+      let weapon = chip.dataset.weapon;
+      const custom = chip.querySelector(".custom-name");
       if (custom) {
         weapon = custom.value.trim();
         if (!weapon) { customError = true; return; }
       }
-      const val = parseFloat(row.querySelector(".amount").dataset.val);
+      const val = parseFloat(chip.querySelector(".amount").dataset.val);
       rows.push([dateVal, activity, weapon, amountText(val), "MSF", note]);
     });
 
