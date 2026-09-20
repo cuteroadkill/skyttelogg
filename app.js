@@ -33,6 +33,7 @@ let weaponsSheetGridId = null; // numeriskt sheetId för "Vapen"-fliken
 let currentMode = "training";
 
 const LOCAL_SHEET_KEY = "msf_spreadsheet_id";
+const SPREADSHEET_FILE_NAME = "MSF Skyttelogg";
 const QUEUE_KEY = "msf_pending_queue";
 const WEAPONS_TAB_NAME = "Vapen";
 const HEADER_ROW = ["Datum", "Aktivitet", "Vapengrupp/Typ", "Antal skott", "Plats/Förening", "Notering"];
@@ -137,6 +138,23 @@ function wireStaticEvents() {
   document.getElementById("weaponsOverlay").addEventListener("click", e => {
     if (e.target.id === "weaponsOverlay") closeWeaponsOverlay();
   });
+
+  // Peka om till befintligt ark
+  document.getElementById("reconnectSheetBtn").addEventListener("click", async () => {
+    const input = document.getElementById("reconnectSheetInput");
+    const btn = document.getElementById("reconnectSheetBtn");
+    if (!input.value.trim()) return;
+    btn.disabled = true;
+    try {
+      await reconnectSheet(input.value);
+      input.value = "";
+      showToast("Nu pekar appen på det arket!", false);
+    } catch (e) {
+      showToast("Kunde inte använda det arket: " + e.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }
 
 async function onTokenReceived(resp) {
@@ -164,10 +182,14 @@ async function onTokenReceived(resp) {
   }
 }
 
-// Om config.js redan pekar på ett befintligt ark (SPREADSHEET_ID ifyllt) används det.
-// Annars: kolla om vi skapat ett åt den här personen tidigare (localStorage på
-// den här enheten). Finns inget av delarna - skapa ett nytt ark automatiskt,
-// med rätt rubriker redan på plats, och kom ihåg det till nästa gång.
+// Prioritetsordning för att avgöra vilket ark som ska användas:
+// 1. config.js pekar redan på ett specifikt ark (t.ex. en egen fristående
+//    installation) - använd det, rör ingenting mer.
+// 2. Redan känt på DEN HÄR enheten sedan tidigare (snabbaste vägen).
+// 3. Fråga Google Drive om ett ark med rätt namn redan finns någonstans i
+//    personens Drive, oavsett vilken enhet det skapades på tidigare - det
+//    är detta som gör att man kan byta telefon utan att tappa kopplingen.
+// 4. Inget av ovan - skapa ett nytt ark, med rätt rubriker på plats.
 async function ensureSpreadsheet() {
   if (CONFIG.SPREADSHEET_ID) {
     spreadsheetId = CONFIG.SPREADSHEET_ID;
@@ -179,12 +201,19 @@ async function ensureSpreadsheet() {
     return;
   }
 
+  const found = await findSpreadsheetByName();
+  if (found) {
+    spreadsheetId = found;
+    localStorage.setItem(LOCAL_SHEET_KEY, spreadsheetId);
+    return;
+  }
+
   showToast("Skapar ditt kalkylark...", false);
 
   const created = await sheetsFetch("", {
     method: "POST",
     body: JSON.stringify({
-      properties: { title: "MSF Skyttelogg" },
+      properties: { title: SPREADSHEET_FILE_NAME },
       sheets: [{ properties: { title: "Loggbok" } }]
     })
   });
@@ -216,6 +245,26 @@ async function ensureSpreadsheet() {
   showToast("Ditt kalkylark är klart!", false);
 }
 
+// Peka om till ett specifikt, befintligt ark (används av "Ark"-fältet i
+// Inställningar). Skriver INTE över spreadsheetId permanent i configen -
+// bara i den här enhetens lokala minne, precis som auto-skapandet gör.
+async function reconnectSheet(idOrUrl) {
+  let id = idOrUrl.trim();
+  const match = id.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  if (match) id = match[1];
+  if (!id) throw new Error("Inget ID angavs.");
+
+  spreadsheetId = id;
+  await loadSheetMeta();       // verifierar samtidigt att ID:t är giltigt och nåbart
+  await ensureWeaponsSheet();
+  await loadWeapons();
+  buildWeaponList();
+  localStorage.setItem(LOCAL_SHEET_KEY, spreadsheetId);
+  document.getElementById("sheetLink").href =
+    `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+  loadRecent();
+}
+
 function signOut() {
   if (accessToken) {
     google.accounts.oauth2.revoke(accessToken, () => {});
@@ -228,6 +277,38 @@ function signOut() {
 
 // ---------- Sheets API ----------
 const SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
+
+// ---------- Drive API (bara metadata - kan aldrig läsa filinnehåll) ----------
+// Används enbart för att HITTA ett tidigare skapat ark via dess filnamn,
+// så att man kan byta telefon utan att behöva peka om manuellt.
+const DRIVE_BASE = "https://www.googleapis.com/drive/v3";
+
+async function driveFetch(path) {
+  const res = await fetch(`${DRIVE_BASE}/${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (res.status === 401) {
+    accessToken = null;
+    tokenClient.requestAccessToken({ prompt: "" });
+    throw new Error("Sessionen gick ut, logga in igen.");
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error?.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function findSpreadsheetByName() {
+  const q = encodeURIComponent(
+    `name='${SPREADSHEET_FILE_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`
+  );
+  const data = await driveFetch(`files?q=${q}&fields=files(id,name)&orderBy=createdTime&spaces=drive`);
+  if (data.files && data.files.length > 0) {
+    return data.files[0].id; // äldsta träffen om flera skulle finnas
+  }
+  return null;
+}
 
 async function sheetsFetch(path, options = {}) {
   const url = path ? `${SHEETS_BASE}/${path}` : SHEETS_BASE;
