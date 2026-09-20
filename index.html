@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161A">
+<title>MSF Skyttelogg</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="toast" class="toast"></div>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-text">MSF SKYTTELOGG</span>
+      </div>
+      <button id="signOutBtn" class="icon-btn hidden" title="Logga ut" aria-label="Logga ut">⏻</button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+
+    <!-- Inloggningsvy -->
+    <section id="signedOutView" class="panel center-panel">
+      <div class="reticle" aria-hidden="true"></div>
+      <h1>MSF Skyttelogg</h1>
+      <p class="muted">Logga dina träningspass, tävlingar och annat — direkt till ditt eget Google Sheet.</p>
+      <button id="signInBtn" class="btn btn-primary btn-wide" disabled>Logga in med Google</button>
+      <p class="fine-print muted">Din data lagras i ditt eget kalkylark. Ingen annan har åtkomst.</p>
+    </section>
+
+    <!-- Appvy -->
+    <section id="appView" class="hidden">
+
+      <!-- Datum -->
+      <div class="field-group">
+        <label for="dateInput">Datum</label>
+        <input type="date" id="dateInput" class="input mono">
+      </div>
+
+      <!-- Lägesväxlare -->
+      <div class="mode-switch" role="tablist" aria-label="Typ av pass">
+        <button type="button" class="mode-btn active" data-mode="training" role="tab" aria-selected="true">Träning</button>
+        <button type="button" class="mode-btn" data-mode="competition" role="tab" aria-selected="false">Tävling</button>
+        <button type="button" class="mode-btn" data-mode="other" role="tab" aria-selected="false">Annat</button>
+      </div>
+
+      <div class="field-group">
+        <input type="text" id="noteInput" class="input" placeholder="Valfri notering">
+      </div>
+
+      <!-- Annan aktivitet -->
+      <div id="otherActivityBlock" class="field-group hidden">
+        <input type="text" id="activityTypeInput" class="input" placeholder="Vad gäller det? (t.ex. Funktionär, Städdag)">
+      </div>
+
+      <!-- Vapenlista -->
+      <div id="weaponBlock">
+        <div id="weaponList" class="weapon-list"></div>
+        <p class="hint muted">Mängd anges i askar per vapengrupp</p>
+      </div>
+
+      <button id="logBtn" class="btn btn-primary btn-wide btn-sticky">Logga pass</button>
+
+      <!-- Senaste loggningar -->
+      <div class="recent-section">
+        <div class="recent-header">
+          <span>Senaste</span>
+          <button id="refreshBtn" class="text-btn">Uppdatera</button>
+        </div>
+        <div id="recentList" class="recent-list">
+          <p class="muted small">Laddar...</p>
+        </div>
+      </div>
+
+      <a id="sheetLink" href="#" target="_blank" class="sheet-link">Öppna kalkylarket →</a>
+
+    </section>
+
+  </main>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
