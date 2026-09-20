@@ -543,20 +543,34 @@ function buildPdf(rows, from, to) {
 
   drawHeader();
 
+  const lineHeight = 4.2; // mm per textrad vid 9pt
+
   rows.forEach(row => {
     const [date, activity, weapon, amount, , note] = row;
-    if (y > 275) {
+    const cells = [date || "", activity || "", weapon || "", amount || "", note || ""];
+
+    // Dela upp varje kolumns text i så många rader som faktiskt behövs
+    // för att rymmas i kolumnbredden - detta är det jsPDF INTE gör åt
+    // dig automatiskt när du bara sätter maxWidth på doc.text().
+    const splitCells = cells.map((text, idx) => doc.splitTextToSize(text, cols[idx].w));
+    const rowLines = Math.max(...splitCells.map(lines => lines.length), 1);
+    const rowHeight = rowLines * lineHeight;
+
+    // Kolla platsen INNAN vi ritar, annars kapas raden mitt itu vid sidbrytning
+    if (y + rowHeight > 275) {
       doc.addPage();
       y = 20;
       drawHeader();
     }
-    doc.setFontSize(9);
-    doc.text(date || "", cols[0].x, y);
-    doc.text(activity || "", cols[1].x, y, { maxWidth: cols[1].w });
-    doc.text(weapon || "", cols[2].x, y, { maxWidth: cols[2].w });
-    doc.text(amount || "", cols[3].x, y, { maxWidth: cols[3].w });
-    doc.text(note || "", cols[4].x, y, { maxWidth: cols[4].w });
-    y += 7;
+
+    splitCells.forEach((lines, idx) => doc.text(lines, cols[idx].x, y));
+
+    const rowBottom = y + rowHeight;
+    doc.setDrawColor(232, 232, 232);
+    doc.setLineWidth(0.15);
+    doc.line(marginX, rowBottom + 1.5, pageWidth - marginX, rowBottom + 1.5);
+
+    y = rowBottom + 5; // radhöjd + luft till nästa rad
   });
 
   y += 6;
