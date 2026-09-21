@@ -33,6 +33,8 @@ let weaponsSheetGridId = null; // numeriskt sheetId för "Vapen"-fliken
 let currentMode = "training";
 
 const LOCAL_SHEET_KEY = "msf_spreadsheet_id";
+const LOCATION_KEY = "skyttelogg_location";
+const DEFAULT_LOCATION = "Skjutbana";
 const SPREADSHEET_FILE_NAME = "Skyttelogg";
 const QUEUE_KEY = "msf_pending_queue";
 const WEAPONS_TAB_NAME = "Vapen";
@@ -48,6 +50,8 @@ window.addEventListener("load", () => {
   wireDatePicker("exportToInput", "exportToDisplay");
   wireStaticEvents();
   updateQueueBadge();
+  document.getElementById("locationInput").value =
+    localStorage.getItem(LOCATION_KEY) || DEFAULT_LOCATION;
   window.addEventListener("online", trySyncQueue);
 
   if (CONFIG.ISSUES_URL) {
@@ -881,10 +885,11 @@ function openEditOverlay(rowNumber) {
   const row = recentRowsCache[rowNumber];
   if (!row) return;
   editingRow = rowNumber;
-  const [date, activity, weapon, amount, , note] = row;
+  const [date, activity, weapon, amount, location, note] = row;
   setDateFor("editDateInput", "editDateDisplay", date || todayLocalStr());
   document.getElementById("editActivity").value = activity || "";
   document.getElementById("editWeapon").value = weapon || "";
+  document.getElementById("editLocation").value = location || DEFAULT_LOCATION;
   document.getElementById("editAmount").value = amount || "";
   document.getElementById("editNote").value = note || "";
   document.getElementById("editOverlay").classList.remove("hidden");
@@ -900,6 +905,7 @@ async function saveEditedRow() {
   const date = document.getElementById("editDateInput").value;
   const activity = document.getElementById("editActivity").value.trim();
   const weapon = document.getElementById("editWeapon").value.trim();
+  const location = document.getElementById("editLocation").value.trim() || DEFAULT_LOCATION;
   const amount = document.getElementById("editAmount").value.trim();
   const note = document.getElementById("editNote").value;
 
@@ -913,7 +919,7 @@ async function saveEditedRow() {
     const range = encodeURIComponent(`${sheetTitle}!A${editingRow}:F${editingRow}`);
     await sheetsFetch(
       `${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
-      { method: "PUT", body: JSON.stringify({ values: [[date, activity, weapon, amount, "MSF", note]] }) }
+      { method: "PUT", body: JSON.stringify({ values: [[date, activity, weapon, amount, location, note]] }) }
     );
     await sortSheetByDateDesc();
     showToast("Passet uppdaterat!", false);
@@ -1180,7 +1186,7 @@ function buildPdf(rows, from, to) {
   doc.setTextColor(20, 20, 20);
   doc.text(`Totalt antal loggade poster: ${rows.length}`, marginX, y);
 
-  doc.save(`msf-skyttelogg-${from}-till-${to}.pdf`);
+  doc.save(`skyttelogg-${from}-till-${to}.pdf`);
 }
 
 // ---------- Submit ----------
@@ -1188,6 +1194,8 @@ async function submitLog() {
   const note = document.getElementById("noteInput").value;
   const dateVal = document.getElementById("dateInput").value;
   const logBtn = document.getElementById("logBtn");
+  const locationInput = document.getElementById("locationInput");
+  const location = locationInput.value.trim() || DEFAULT_LOCATION;
 
   let rows = [];
   let activity = "Träning";
@@ -1206,7 +1214,7 @@ async function submitLog() {
         if (!weapon) { customError = true; return; }
       }
       const val = parseFloat(chip.querySelector(".amount").dataset.val);
-      rows.push([dateVal, activity, weapon, amountText(val), "MSF", note]);
+      rows.push([dateVal, activity, weapon, amountText(val), location, note]);
     });
 
     if (customError) return showToast("Skriv in namnet på det valfria vapnet, eller bocka ur raden.", true);
@@ -1214,8 +1222,10 @@ async function submitLog() {
   } else {
     activity = document.getElementById("activityTypeInput").value.trim();
     if (!activity) return showToast("Skriv vad aktiviteten gäller!", true);
-    rows.push([dateVal, activity, "", "", "MSF", note]);
+    rows.push([dateVal, activity, "", "", location, note]);
   }
+
+  localStorage.setItem(LOCATION_KEY, location);
 
   logBtn.disabled = true;
   showToast("Loggar...", false);
