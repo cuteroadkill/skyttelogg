@@ -1,5 +1,5 @@
 {
-  "name": "MSF Skyttelogg",
+  "name": "Skyttelogg",
   "short_name": "Skyttelogg",
   "start_url": "./index.html",
   "scope": "./",
