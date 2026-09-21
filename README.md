@@ -1,4 +1,4 @@
-# MSF Skyttelogg — egen app-version
+# Skyttelogg — egen app-version
 
 En snygg, installerbar PWA som loggar direkt mot ditt eget Google Sheet.
 Varje person kör sin egen version — eget kalkylark, eget Google Cloud-projekt,
@@ -46,11 +46,11 @@ ur adressfältet: `https://docs.google.com/spreadsheets/d/DETTA_ÄR_ID:T/edit`
 
 ## 2. Skapa Google Cloud-projekt (engångsjobb, ~15 min)
 
-1. Gå till [console.cloud.google.com](https://console.cloud.google.com) → skapa ett nytt projekt, t.ex. "MSF Skyttelogg".
+1. Gå till [console.cloud.google.com](https://console.cloud.google.com) → skapa ett nytt projekt, t.ex. "Skyttelogg".
 2. **APIs och tjänster → Bibliotek** → sök upp **Google Sheets API** → Aktivera.
 3. **APIs och tjänster → OAuth-samtyckesskärm** (kan också heta **Google Auth Platform**):
    - User type: **External**
-   - Fyll i appnamn ("MSF Skyttelogg"), din e-post som supportkontakt.
+   - Fyll i appnamn ("Skyttelogg"), din e-post som supportkontakt.
    - Under **Data Access / Scopes**: lägg till `https://www.googleapis.com/auth/spreadsheets`.
    - Under **Audience / Testanvändare**: lägg till ditt eget Google-konto.
    - Spara — låt appen stå kvar i **Testing**.
@@ -179,14 +179,14 @@ egen Drive — det är bara koden och webbadressen som är gemensam.
   `https://www.googleapis.com/auth/drive.metadata.readonly` — läser bara
   filnamn i personens Drive (för att hitta rätt ark automatiskt på en ny
   telefon), kan aldrig läsa filers innehåll.
-- Appen skapar automatiskt ett ark med namnet **"MSF Skyttelogg"** i den
+- Appen skapar automatiskt ett ark med namnet **"Skyttelogg"** i den
   inloggade personens Drive första gången, och hittar samma ark automatiskt
   igen på vilken enhet som helst — ingen behöver komma ihåg något ID.
 
 ### Värdens engångsuppsättning
 
 1. **Döp om ditt befintliga ark** (om du redan har ett du vill fortsätta
-   använda) till exakt **"MSF Skyttelogg"** i Google Sheets/Drive. Det gör
+   använda) till exakt **"Skyttelogg"** i Google Sheets/Drive. Det gör
    att appen hittar just ditt gamla ark automatiskt istället för att skapa
    ett nytt, tomt.
 2. **APIs och tjänster → Bibliotek** → sök upp **"Google Drive API"** →
