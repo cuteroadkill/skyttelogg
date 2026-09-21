@@ -1,5 +1,5 @@
 // =================================================================
-// MSF Skyttelogg — app.js
+// Skyttelogg — app.js
 // Google Identity Services (inloggning) + Sheets API (databas)
 // =================================================================
 
@@ -33,7 +33,7 @@ let weaponsSheetGridId = null; // numeriskt sheetId för "Vapen"-fliken
 let currentMode = "training";
 
 const LOCAL_SHEET_KEY = "msf_spreadsheet_id";
-const SPREADSHEET_FILE_NAME = "MSF Skyttelogg";
+const SPREADSHEET_FILE_NAME = "Skyttelogg";
 const QUEUE_KEY = "msf_pending_queue";
 const WEAPONS_TAB_NAME = "Vapen";
 const HEADER_ROW = ["Datum", "Aktivitet", "Vapengrupp/Typ", "Antal skott", "Plats/Förening", "Notering"];
@@ -1045,7 +1045,7 @@ function buildPdf(rows, from, to) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
   doc.setTextColor(20, 20, 20);
-  doc.text("MSF Skyttelogg", marginX, y);
+  doc.text("Skyttelogg", marginX, y);
   y += 8;
 
   doc.setFont("helvetica", "normal");
