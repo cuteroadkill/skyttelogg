@@ -5,7 +5,7 @@
 const CONFIG = {
   // Från Google Cloud Console → API:er och tjänster → Autentiseringsuppgifter
   // → OAuth-klient-ID (typ "Webbapp")
-  CLIENT_ID: "1069993239744-r9lqg38t6u4gku0at7j86n8pbqv5a0pl.apps.googleusercontent.com",
+  CLIENT_ID: "DITT_CLIENT_ID.apps.googleusercontent.com",
 
   // ID:t i URL:en till ditt kalkylark, OM du redan har ett du vill använda
   // (t.ex. migrerar från en tidigare version av appen):
@@ -20,5 +20,9 @@ const CONFIG = {
   SPREADSHEET_ID: "",
 
   // Behörighet appen ber om — rör inte denna
-  SCOPES: "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly"
+  SCOPES: "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly",
+
+  // Länk till "rapportera bugg/idé" under kugghjulet i appen.
+  // Lämna som tom sträng ("") för att dölja länken helt.
+  ISSUES_URL: "https://github.com/cuteroadkill/skyttelogg/issues/new/choose"
 };
