@@ -4,6 +4,10 @@ En snygg, installerbar PWA som loggar direkt mot ditt eget Google Sheet.
 Varje person kör sin egen version — eget kalkylark, eget Google Cloud-projekt,
 egen GitHub Pages-sida. Ingen delar data med någon annan.
 
+**Hittat en bugg, eller har en idé?** Öppna en
+[Issue](../../issues/new/choose) i det här repot — det finns färdiga mallar
+för både buggar och önskemål.
+
 > **Kör du istället en delad app** (en person hostar, flera loggar in med sina
 > egna Google-konton)? Det mesta nedan gäller fortfarande koden och filerna,
 > men själva uppsättningen skiljer sig — se avsnittet **"Delad app-modell"**
