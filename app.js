@@ -50,6 +50,12 @@ window.addEventListener("load", () => {
   updateQueueBadge();
   window.addEventListener("online", trySyncQueue);
 
+  if (CONFIG.ISSUES_URL) {
+    const link = document.getElementById("issuesLink");
+    link.href = CONFIG.ISSUES_URL;
+    link.classList.remove("hidden");
+  }
+
   // Google-biblioteket laddas async — vänta tills det finns
   waitForGoogleLib(() => {
     tokenClient = google.accounts.oauth2.initTokenClient({
