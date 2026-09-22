@@ -87,7 +87,11 @@
 
       <!-- Vapenlista -->
       <div id="weaponBlock">
-        <div id="weaponList" class="weapon-grid"></div>
+        <div class="unit-switch" role="tablist" aria-label="Mängdenhet">
+          <button type="button" class="unit-btn active" data-unit="ask">Askar</button>
+          <button type="button" class="unit-btn" data-unit="skott">Skott</button>
+        </div>
+        <div id="weaponList" class="weapon-grid" data-unit="ask"></div>
         <p class="hint muted">Mängd anges i askar per vapengrupp</p>
       </div>
 
@@ -198,10 +202,12 @@
 
         <h3 class="settings-subhead">Ark</h3>
         <p class="muted small" style="margin: -6px 0 12px;">
-          Appen hittar automatiskt rätt ark, även på en ny telefon. Peka bara
-          om manuellt om något gått fel, eller om du vill använda ett annat
-          befintligt ark.
+          Byter du telefon behöver du peka om till ditt befintliga ark en
+          gång — välj det i listan nedan, snabbast och säkrast.
         </p>
+        <button id="pickerBtn" class="btn btn-primary btn-wide" style="margin-bottom:10px;">📁 Välj i Google Drive</button>
+
+        <p class="muted small" style="margin: 4px 0 8px;">Eller klistra in ID/länk manuellt:</p>
         <div class="add-weapon-row">
           <input type="text" id="reconnectSheetInput" class="input" placeholder="Kalkylarkets ID eller länk">
           <button id="reconnectSheetBtn" class="btn btn-primary add-weapon-btn">Använd</button>
@@ -224,6 +230,9 @@
 
   </main>
 
+  <!-- Anonym, aggregerad användningsräknare (GoatCounter) - inga cookies,
+       inga personuppgifter, ingen koppling till ditt konto eller din data. -->
+  <script data-goatcounter="https://cuteroadkill.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.0.0/jspdf.umd.min.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="config.js"></script>
