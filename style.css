@@ -325,6 +325,47 @@ body {
 }
 
 /* ---------- Weapon chips ---------- */
+.unit-switch {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  justify-content: flex-end;
+}
+.unit-btn {
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.unit-btn.active {
+  background: rgba(var(--brass-rgb), 0.14);
+  border-color: var(--brass-dim);
+  color: var(--brass);
+}
+
+.chip-shots {
+  display: none;
+  align-items: center;
+}
+.shots-input {
+  width: 64px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 7px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-raised);
+  color: var(--text);
+}
+#weaponList[data-unit="ask"] .chip-shots { display: none !important; }
+#weaponList[data-unit="skott"] .chip-stepper { display: none !important; }
+#weaponList[data-unit="skott"] .weapon-chip:has(.chip-input:checked) .chip-shots { display: flex !important; }
 .weapon-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
