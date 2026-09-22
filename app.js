@@ -24,6 +24,18 @@ const THEMES = [
 const THEME_KEY = "msf_theme";
 let currentThemeId = "brass";
 
+// ---------- Anonym användningsräkning (GoatCounter) ----------
+// Skickar aldrig persondata - bara "det här hände, en gång till". Om
+// skriptet är blockerat (annonsblockerare e.dyl.) eller inte hunnit ladda
+// än gör funktionen ingenting, kraschar aldrig resten av appen.
+function trackEvent(name) {
+  try {
+    if (window.goatcounter && window.goatcounter.count) {
+      window.goatcounter.count({ path: name, event: true });
+    }
+  } catch (e) { /* strunta i, aldrig kritiskt */ }
+}
+
 let accessToken = null;
 let tokenClient = null;
 let spreadsheetId = null;   // dynamiskt: från config.js ELLER auto-skapat ark
@@ -121,6 +133,9 @@ function wireStaticEvents() {
   document.querySelectorAll(".mode-btn").forEach(btn => {
     btn.addEventListener("click", () => setMode(btn.dataset.mode));
   });
+  document.querySelectorAll(".unit-btn").forEach(btn => {
+    btn.addEventListener("click", () => setAmmoUnit(btn.dataset.unit));
+  });
 
   // Redigeringsoverlay
   document.getElementById("editCancelBtn").addEventListener("click", closeEditOverlay);
@@ -142,6 +157,7 @@ function wireStaticEvents() {
   document.getElementById("manageWeaponsBtn").addEventListener("click", openWeaponsOverlay);
   document.getElementById("weaponsCloseBtn").addEventListener("click", closeWeaponsOverlay);
   document.getElementById("addWeaponBtn").addEventListener("click", addWeapon);
+  document.getElementById("pickerBtn").addEventListener("click", openDrivePicker);
   document.getElementById("newWeaponInput").addEventListener("keydown", e => {
     if (e.key === "Enter") { e.preventDefault(); addWeapon(); }
   });
@@ -196,10 +212,12 @@ async function onTokenReceived(resp) {
 // 1. config.js pekar redan på ett specifikt ark (t.ex. en egen fristående
 //    installation) - använd det, rör ingenting mer.
 // 2. Redan känt på DEN HÄR enheten sedan tidigare (snabbaste vägen).
-// 3. Fråga Google Drive om ett ark med rätt namn redan finns någonstans i
-//    personens Drive, oavsett vilken enhet det skapades på tidigare - det
-//    är detta som gör att man kan byta telefon utan att tappa kopplingen.
-// 4. Inget av ovan - skapa ett nytt ark, med rätt rubriker på plats.
+// 3. Inget av ovan - skapa ett nytt ark, med rätt rubriker på plats.
+//
+// OBS: med drive.file-scopet kan appen inte längre söka igenom hela Driven
+// efter ett ark med rätt namn (det scopet ser bara filer appen redan fått
+// tillgång till). Byter man enhet måste man därför välja sitt befintliga
+// ark via Google-filväljaren under Inställningar → Ark, en gång.
 async function ensureSpreadsheet() {
   if (CONFIG.SPREADSHEET_ID) {
     spreadsheetId = CONFIG.SPREADSHEET_ID;
@@ -208,13 +226,6 @@ async function ensureSpreadsheet() {
   const stored = localStorage.getItem(LOCAL_SHEET_KEY);
   if (stored) {
     spreadsheetId = stored;
-    return;
-  }
-
-  const found = await findSpreadsheetByName();
-  if (found) {
-    spreadsheetId = found;
-    localStorage.setItem(LOCAL_SHEET_KEY, spreadsheetId);
     return;
   }
 
@@ -255,9 +266,10 @@ async function ensureSpreadsheet() {
   showToast("Ditt kalkylark är klart!", false);
 }
 
-// Peka om till ett specifikt, befintligt ark (används av "Ark"-fältet i
-// Inställningar). Skriver INTE över spreadsheetId permanent i configen -
-// bara i den här enhetens lokala minne, precis som auto-skapandet gör.
+// Peka om till ett specifikt, befintligt ark - antingen valt via Google-
+// filväljaren (Picker) eller inklistrat ID/länk manuellt som reserv.
+// Skriver INTE över spreadsheetId permanent i configen - bara i den här
+// enhetens lokala minne, precis som auto-skapandet gör.
 async function reconnectSheet(idOrUrl) {
   let id = idOrUrl.trim();
   const match = id.match(/\/d\/([a-zA-Z0-9-_]+)/);
@@ -275,6 +287,55 @@ async function reconnectSheet(idOrUrl) {
   loadRecent();
 }
 
+// ---------- Google Picker (filväljare för "Ark"-inställningen) ----------
+// Laddas lat - bara när man faktiskt trycker på "Välj i Drive", så den
+// inte tynger ner appens starttid för alla som aldrig behöver den.
+let pickerLoaded = false;
+
+function openDrivePicker() {
+  if (!CONFIG.PICKER_API_KEY) {
+    showToast("Picker är inte konfigurerad (saknar API-nyckel).", true);
+    return;
+  }
+  if (pickerLoaded) {
+    showPickerDialog();
+    return;
+  }
+  const script = document.createElement("script");
+  script.src = "https://apis.google.com/js/api.js";
+  script.onload = () => {
+    gapi.load("picker", () => {
+      pickerLoaded = true;
+      showPickerDialog();
+    });
+  };
+  document.head.appendChild(script);
+}
+
+function showPickerDialog() {
+  const view = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS)
+    .setMode(google.picker.DocsViewMode.LIST);
+
+  const picker = new google.picker.PickerBuilder()
+    .addView(view)
+    .setOAuthToken(accessToken)
+    .setDeveloperKey(CONFIG.PICKER_API_KEY)
+    .setCallback(pickerCallback)
+    .build();
+  picker.setVisible(true);
+}
+
+async function pickerCallback(data) {
+  if (data.action !== google.picker.Action.PICKED) return;
+  const fileId = data.docs[0].id;
+  try {
+    await reconnectSheet(fileId);
+    showToast("Nu pekar appen på det arket!", false);
+  } catch (e) {
+    showToast("Kunde inte använda det arket: " + e.message, true);
+  }
+}
+
 function signOut() {
   if (accessToken) {
     google.accounts.oauth2.revoke(accessToken, () => {});
@@ -287,38 +348,6 @@ function signOut() {
 
 // ---------- Sheets API ----------
 const SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
-
-// ---------- Drive API (bara metadata - kan aldrig läsa filinnehåll) ----------
-// Används enbart för att HITTA ett tidigare skapat ark via dess filnamn,
-// så att man kan byta telefon utan att behöva peka om manuellt.
-const DRIVE_BASE = "https://www.googleapis.com/drive/v3";
-
-async function driveFetch(path) {
-  const res = await fetch(`${DRIVE_BASE}/${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-  if (res.status === 401) {
-    accessToken = null;
-    tokenClient.requestAccessToken({ prompt: "" });
-    throw new Error("Sessionen gick ut, logga in igen.");
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error?.message || `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-async function findSpreadsheetByName() {
-  const q = encodeURIComponent(
-    `name='${SPREADSHEET_FILE_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`
-  );
-  const data = await driveFetch(`files?q=${q}&fields=files(id,name)&orderBy=createdTime&spaces=drive`);
-  if (data.files && data.files.length > 0) {
-    return data.files[0].id; // äldsta träffen om flera skulle finnas
-  }
-  return null;
-}
 
 async function sheetsFetch(path, options = {}) {
   const url = path ? `${SHEETS_BASE}/${path}` : SHEETS_BASE;
@@ -561,6 +590,9 @@ function buildWeaponList() {
       <button type="button" class="step-btn" data-delta="-0.5">−</button>
       <span class="amount mono" data-val="1">1</span>
       <button type="button" class="step-btn" data-delta="0.5">+</button>
+    </span>
+    <span class="chip-shots">
+      <input type="number" class="shots-input mono" inputmode="numeric" min="0" placeholder="Antal">
     </span>`;
   container.appendChild(chip);
   wireChip(chip, true);
@@ -793,6 +825,9 @@ function weaponChip(value, label) {
       <button type="button" class="step-btn" data-delta="-0.5">−</button>
       <span class="amount mono" data-val="1">1</span>
       <button type="button" class="step-btn" data-delta="0.5">+</button>
+    </span>
+    <span class="chip-shots">
+      <input type="number" class="shots-input mono" inputmode="numeric" min="0" placeholder="Antal">
     </span>`;
   wireChip(chip, false);
   return chip;
@@ -802,6 +837,7 @@ function wireChip(chip, isCustom) {
   const cb = chip.querySelector(".chip-input");
   const amountEl = chip.querySelector(".amount");
   const buttons = chip.querySelectorAll(".step-btn");
+  const shotsInput = chip.querySelector(".shots-input");
 
   if (isCustom) {
     const nameInput = chip.querySelector(".custom-name");
@@ -812,6 +848,9 @@ function wireChip(chip, isCustom) {
       cb.checked = nameInput.value.trim().length > 0;
     });
   }
+
+  shotsInput.addEventListener("click", e => e.stopPropagation());
+  shotsInput.addEventListener("focus", () => { cb.checked = true; });
 
   buttons.forEach(btn => {
     btn.addEventListener("click", e => {
@@ -835,6 +874,20 @@ function fractionText(v) {
 }
 function amountText(v) {
   return fractionText(v) + (v > 1 ? " askar" : " ask");
+}
+
+// ---------- Mängdenhet (askar / skott) ----------
+let currentAmmoUnit = "ask";
+
+function setAmmoUnit(unit) {
+  currentAmmoUnit = unit;
+  document.getElementById("weaponList").dataset.unit = unit;
+  document.querySelectorAll(".unit-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.unit === unit);
+  });
+  document.querySelector(".hint").textContent = unit === "ask"
+    ? "Mängd anges i askar per vapengrupp"
+    : "Mängd anges i exakt antal skott per vapengrupp";
 }
 
 // ---------- Läge ----------
@@ -874,7 +927,10 @@ function resetForm() {
     amountEl.textContent = "1";
     const custom = chip.querySelector(".custom-name");
     if (custom) custom.value = "";
+    const shotsInput = chip.querySelector(".shots-input");
+    if (shotsInput) shotsInput.value = "";
   });
+  setAmmoUnit("ask");
   setMode("training");
 }
 
@@ -960,20 +1016,25 @@ async function deleteEditedRow() {
 }
 
 // ---------- PDF-export ----------
-// Tolkar "1 ask" / "2½ askar" / "½ ask" tillbaka till ett tal, för summering.
+// Tolkar "1 ask" / "2½ askar" / "½ ask" / "43 skott" tillbaka till ett tal
+// OCH vilken enhet det var - de två går inte att slå ihop till samma summa.
 function parseAmount(str) {
-  if (!str) return 0;
+  if (!str) return { value: 0, unit: null };
   const s = str.trim();
-  if (s.startsWith("½")) return 0.5;
+  if (/skott$/.test(s)) {
+    const n = parseInt(s, 10);
+    return { value: isNaN(n) ? 0 : n, unit: "skott" };
+  }
+  if (s.startsWith("½")) return { value: 0.5, unit: "ask" };
   const m = s.match(/^(\d+)(½)?/);
-  if (!m) return 0;
+  if (!m) return { value: 0, unit: null };
   let n = parseInt(m[1], 10);
   if (m[2]) n += 0.5;
-  return n;
+  return { value: n, unit: "ask" };
 }
 
 function buildSummary(rows) {
-  const weaponStats = {}; // vapen -> { sessions, tavling, total }
+  const weaponStats = {}; // vapen -> { sessions, tavling, askTotal, skottTotal }
   const otherStats = {};  // aktivitet -> antal
 
   rows.forEach(row => {
@@ -982,10 +1043,12 @@ function buildSummary(rows) {
     // loggposter med lite olika skrivsätt av samma vapen slås ihop korrekt.
     const weapon = (rawWeapon || "").replace(/\s+/g, " ").trim();
     if (weapon) {
-      if (!weaponStats[weapon]) weaponStats[weapon] = { sessions: 0, tavling: 0, total: 0 };
+      if (!weaponStats[weapon]) weaponStats[weapon] = { sessions: 0, tavling: 0, askTotal: 0, skottTotal: 0 };
       weaponStats[weapon].sessions++;
       if (activity === "Tävling") weaponStats[weapon].tavling++;
-      weaponStats[weapon].total += parseAmount(amount);
+      const parsed = parseAmount(amount);
+      if (parsed.unit === "skott") weaponStats[weapon].skottTotal += parsed.value;
+      else if (parsed.unit === "ask") weaponStats[weapon].askTotal += parsed.value;
     } else {
       const key = activity || "Övrigt";
       otherStats[key] = (otherStats[key] || 0) + 1;
@@ -1033,6 +1096,7 @@ async function generatePdf() {
 
     buildPdf(rows, from, to);
     showToast("PDF skapad!", false);
+    trackEvent("pdf-exporterad");
     closeExportOverlay();
   } catch (e) {
     showToast("Ett fel uppstod: " + e.message, true);
@@ -1077,22 +1141,30 @@ function buildPdf(rows, from, to) {
     doc.setFontSize(9.5);
     doc.setTextColor(50, 50, 50);
 
-    const nameColWidth = 90; // mm tillgängligt innan pass-kolumnen
+    const nameColWidth = 62;
+    const passColX = marginX + 66;
+    const passColWidth = 40;
+    const totalColX = marginX + 110;
+    const totalColWidth = pageWidth - marginX - totalColX;
     const summaryLineHeight = 4.2;
 
     weaponNames.forEach(name => {
       const s = weaponStats[name];
       const passText = s.sessions === 1 ? "1 pass" : `${s.sessions} pass`;
       const tavlingText = s.tavling > 0 ? ` (varav ${s.tavling} tävling)` : "";
-      const totalText = s.total > 0
-        ? `${fractionText(s.total)} ${s.total > 1 ? "askar" : "ask"}`
+      const askText = s.askTotal > 0
+        ? `${fractionText(s.askTotal)} ${s.askTotal > 1 ? "askar" : "ask"}`
         : "";
+      const skottText = s.skottTotal > 0 ? `${s.skottTotal} skott` : "";
+      const totalText = [askText, skottText].filter(Boolean).join(" + ");
 
-      // Samma teknik som i detaljtabellen: dela upp långa vapennamn i så
-      // många rader som faktiskt behövs, och basera radhöjden på det -
-      // annars kan ett långt namn krocka med nästa rad.
+      // Samma teknik som i detaljtabellen: dela upp långa vapennamn OCH
+      // långa totalsummor (t.ex. "13½ askar + 43 skott") i så många rader
+      // som faktiskt behövs, och basera radhöjden på den bredaste kolumnen -
+      // annars kan text krocka med nästa rad eller rinna av sidan.
       const nameLines = doc.splitTextToSize(name, nameColWidth);
-      const rowHeight = Math.max(nameLines.length, 1) * summaryLineHeight;
+      const totalLines = totalText ? doc.splitTextToSize(totalText, totalColWidth) : [];
+      const rowHeight = Math.max(nameLines.length, totalLines.length, 1) * summaryLineHeight;
 
       if (y + rowHeight > 275) {
         doc.addPage();
@@ -1100,8 +1172,8 @@ function buildPdf(rows, from, to) {
       }
 
       doc.text(nameLines, marginX, y);
-      doc.text(passText + tavlingText, marginX + 95, y);
-      if (totalText) doc.text(totalText, pageWidth - marginX - 22, y);
+      doc.text(passText + tavlingText, passColX, y);
+      if (totalLines.length) doc.text(totalLines, totalColX, y);
 
       y += rowHeight + 1.3;
     });
@@ -1203,6 +1275,7 @@ async function submitLog() {
   if (currentMode === "training" || currentMode === "competition") {
     activity = (currentMode === "competition") ? "Tävling" : "Träning";
     let customError = false;
+    let shotsError = false;
 
     document.querySelectorAll(".weapon-chip").forEach(chip => {
       const cb = chip.querySelector(".chip-input");
@@ -1213,11 +1286,22 @@ async function submitLog() {
         weapon = custom.value.trim();
         if (!weapon) { customError = true; return; }
       }
-      const val = parseFloat(chip.querySelector(".amount").dataset.val);
-      rows.push([dateVal, activity, weapon, amountText(val), location, note]);
+
+      let amountVal;
+      if (currentAmmoUnit === "ask") {
+        const val = parseFloat(chip.querySelector(".amount").dataset.val);
+        amountVal = amountText(val);
+      } else {
+        const shots = parseInt(chip.querySelector(".shots-input").value, 10);
+        if (!shots || shots <= 0) { shotsError = true; return; }
+        amountVal = `${shots} skott`;
+      }
+
+      rows.push([dateVal, activity, weapon, amountVal, location, note]);
     });
 
     if (customError) return showToast("Skriv in namnet på det valfria vapnet, eller bocka ur raden.", true);
+    if (shotsError) return showToast("Ange antal skott för alla ibockade vapen.", true);
     if (rows.length === 0) return showToast("Välj minst ett vapen!", true);
   } else {
     activity = document.getElementById("activityTypeInput").value.trim();
@@ -1234,6 +1318,7 @@ async function submitLog() {
     await appendRows(rows);
     await sortSheetByDateDesc();
     showToast("Passet är loggat!", false);
+    trackEvent("pass-loggat");
     resetForm();
     loadRecent();
   } catch (e) {
@@ -1241,6 +1326,7 @@ async function submitLog() {
     if (isOffline) {
       queueRows(rows);
       showToast("Ingen uppkoppling - sparat, synkas automatiskt.", false);
+      trackEvent("pass-loggat");
       resetForm();
     } else {
       showToast("Ett fel uppstod: " + e.message, true);
