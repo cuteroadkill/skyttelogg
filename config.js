@@ -20,9 +20,24 @@ const CONFIG = {
   SPREADSHEET_ID: "",
 
   // Behörighet appen ber om — rör inte denna
-  SCOPES: "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly",
+  SCOPES: "https://www.googleapis.com/auth/drive.file",
+
+  // Från Google Cloud Console → API:er och tjänster → Autentiseringsuppgifter
+  // → Skapa autentiseringsuppgifter → API-nyckel. Begränsa den till
+  // "Google Picker API" under nyckelns inställningar (Application restrictions
+  // → HTTP referrers, API restrictions → Google Picker API).
+  // Krävs för "Välj i Google Drive"-knappen under Inställningar → Ark.
+  PICKER_API_KEY: "",
 
   // Länk till "rapportera bugg/idé" under kugghjulet i appen.
   // Lämna som tom sträng ("") för att dölja länken helt.
-  ISSUES_URL: "https://github.com/cuteroadkill/skyttelogg/issues/new/choose"
+  ISSUES_URL: "https://github.com/cuteroadkill/skyttelogg/issues/new/choose",
+
+  // Swish-nummer för "Bjud mig på en kaffe" (kugghjulet). Medvetet
+  // uppdelat i bitar istället för en hel siffersträng, så numret inte
+  // ligger som en lätt skrapbar textrad i källkoden - joinas ihop i
+  // app.js bara när panelen faktiskt öppnas. Ändra siffrorna nedan om
+  // du vill koppla din egen Swish, eller lämna arrayen tom ("[]") för
+  // att dölja knappen helt.
+  SWISH_PARTS: ["073", "378", "4500"]
 };
