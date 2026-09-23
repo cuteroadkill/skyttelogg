@@ -214,6 +214,7 @@
         </div>
 
         <a id="issuesLink" href="#" target="_blank" class="sheet-link hidden">🐛 Rapportera bugg eller idé</a>
+        <button type="button" id="coffeeBtn" class="sheet-link" style="background:none; border:none; width:100%; cursor:pointer;">☕ Bjud mig på en kaffe</button>
 
         <p class="muted small" style="text-align:center; margin: -8px 0 12px;">
           Skyttelogg — byggd av
@@ -224,6 +225,28 @@
 
         <div class="overlay-actions">
           <button id="weaponsCloseBtn" class="btn btn-secondary">Stäng</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bjud mig på en kaffe -->
+    <div id="coffeeOverlay" class="overlay hidden">
+      <div class="overlay-panel" style="text-align:center;">
+        <h2>☕ Bjud mig på en kaffe</h2>
+        <p class="muted small" style="margin: -6px 0 20px;">
+          Appen är gratis att använda — men gillar du den, är en kaffe alltid uppskattat.
+        </p>
+
+        <button type="button" id="swishPayBtn" class="btn btn-primary btn-wide" style="margin-bottom: 14px;">Öppna Swish</button>
+
+        <p class="muted small" style="margin-bottom: 6px;">Öppnas inte Swish automatiskt? Kopiera numret:</p>
+        <div class="add-weapon-row" style="justify-content:center;">
+          <span id="swishNumberDisplay" class="input mono" style="text-align:center; flex:0 0 auto; width:auto; padding-left:20px; padding-right:20px;">...</span>
+          <button type="button" id="copySwishBtn" class="btn btn-secondary add-weapon-btn">Kopiera</button>
+        </div>
+
+        <div class="overlay-actions" style="margin-top:20px;">
+          <button id="coffeeCloseBtn" class="btn btn-secondary">Stäng</button>
         </div>
       </div>
     </div>
