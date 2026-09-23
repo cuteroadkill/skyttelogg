@@ -158,6 +158,19 @@ function wireStaticEvents() {
   document.getElementById("weaponsCloseBtn").addEventListener("click", closeWeaponsOverlay);
   document.getElementById("addWeaponBtn").addEventListener("click", addWeapon);
   document.getElementById("pickerBtn").addEventListener("click", openDrivePicker);
+
+  // Bjud mig på en kaffe
+  if (CONFIG.SWISH_PARTS && CONFIG.SWISH_PARTS.length > 0) {
+    document.getElementById("coffeeBtn").addEventListener("click", openCoffeeOverlay);
+  } else {
+    document.getElementById("coffeeBtn").classList.add("hidden");
+  }
+  document.getElementById("coffeeCloseBtn").addEventListener("click", closeCoffeeOverlay);
+  document.getElementById("swishPayBtn").addEventListener("click", openSwishApp);
+  document.getElementById("copySwishBtn").addEventListener("click", copySwishNumber);
+  document.getElementById("coffeeOverlay").addEventListener("click", e => {
+    if (e.target.id === "coffeeOverlay") closeCoffeeOverlay();
+  });
   document.getElementById("newWeaponInput").addEventListener("keydown", e => {
     if (e.key === "Enter") { e.preventDefault(); addWeapon(); }
   });
@@ -680,6 +693,51 @@ function updateActiveSwatch() {
   });
   const customSwatch = document.querySelector(".theme-swatch--custom");
   if (customSwatch) customSwatch.classList.toggle("active", currentThemeId === "custom");
+}
+
+// ---------- Bjud mig på en kaffe (Swish) ----------
+// Numret byggs ihop här, i minnet, bara när panelen öppnas - det ligger
+// aldrig som en hel, sökbar siffersträng i sidans källkod.
+function getSwishNumber() {
+  return (CONFIG.SWISH_PARTS || []).join("");
+}
+
+function openCoffeeOverlay() {
+  const number = getSwishNumber();
+  document.getElementById("swishNumberDisplay").textContent = number;
+  document.getElementById("coffeeOverlay").classList.remove("hidden");
+}
+
+function closeCoffeeOverlay() {
+  document.getElementById("coffeeOverlay").classList.add("hidden");
+}
+
+function openSwishApp() {
+  const number = getSwishNumber();
+  if (!number) return;
+  // Svenskt format utan inledande nolla + landskod, det format Swish
+  // förväntar sig i betalningslänkar.
+  const intNumber = "46" + number.replace(/^0/, "");
+  const payload = {
+    version: 1,
+    payee: { value: intNumber, editable: false },
+    amount: { value: "20", editable: true },
+    message: { value: "Tack för Skyttelogg!", editable: true }
+  };
+  const url = "swish://payment?data=" + encodeURIComponent(JSON.stringify(payload));
+  // Experimentellt - fungerar det inte öppnas bara ingenting, och numret
+  // för manuell Swish står redan synligt i samma panel som reserv.
+  window.location.href = url;
+}
+
+async function copySwishNumber() {
+  const number = getSwishNumber();
+  try {
+    await navigator.clipboard.writeText(number);
+    showToast("Numret kopierat!", false);
+  } catch (e) {
+    showToast("Kunde inte kopiera - markera numret manuellt.", true);
+  }
 }
 
 // ---------- Hantera vapen (overlay) ----------
