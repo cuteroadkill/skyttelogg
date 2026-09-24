@@ -1,4 +1,4 @@
-const CACHE_NAME = "skyttelogg-shell-v2";
+const CACHE_NAME = "skyttelogg-shell-v3";
 const SHELL_FILES = [
   "./index.html",
   "./style.css",
@@ -30,14 +30,19 @@ self.addEventListener("activate", event => {
 // väntan på att webbläsaren ska "upptäcka" att något ändrats.
 // Google/Sheets API-anrop rörs aldrig - alltid nätverket.
 self.addEventListener("fetch", event => {
+  if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        // Cacha bara lyckade svar - annars kan t.ex. en 404 ersätta en
+        // fungerande fil i offline-reserven.
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        }
         return response;
       })
       .catch(() => caches.match(event.request))
