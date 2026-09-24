@@ -27,7 +27,7 @@ const CONFIG = {
   // "Google Picker API" under nyckelns inställningar (Application restrictions
   // → HTTP referrers, API restrictions → Google Picker API).
   // Krävs för "Välj i Google Drive"-knappen under Inställningar → Ark.
-  PICKER_API_KEY: "",
+  PICKER_API_KEY: "AIzaSyDgECxEcpRWfZYSsHDJjBMK3Bhy5_2bBh4",
 
   // Länk till "rapportera bugg/idé" under kugghjulet i appen.
   // Lämna som tom sträng ("") för att dölja länken helt.
