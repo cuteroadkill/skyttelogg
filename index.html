@@ -16,6 +16,7 @@
 <body>
 
   <div id="toast" class="toast"></div>
+  <button type="button" id="reauthBanner" class="reauth-banner hidden">Sessionen gick ut — tryck här för att logga in igen</button>
 
   <header class="topbar">
     <div class="topbar-inner">
@@ -207,7 +208,11 @@
         </p>
         <button id="pickerBtn" class="btn btn-primary btn-wide" style="margin-bottom:10px;">📁 Välj i Google Drive</button>
 
-        <p class="muted small" style="margin: 4px 0 8px;">Eller klistra in ID/länk manuellt:</p>
+        <p class="muted small" style="margin: 4px 0 8px;">
+          Eller klistra in ID/länk manuellt — fungerar bara för ark appen redan
+          har åtkomst till (t.ex. ett den själv skapat, eller ett du tidigare
+          valt i Google Drive):
+        </p>
         <div class="add-weapon-row">
           <input type="text" id="reconnectSheetInput" class="input" placeholder="Kalkylarkets ID eller länk">
           <button id="reconnectSheetBtn" class="btn btn-primary add-weapon-btn">Använd</button>
@@ -225,6 +230,27 @@
 
         <div class="overlay-actions">
           <button id="weaponsCloseBtn" class="btn btn-secondary">Stäng</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Koppla ark (visas när enheten inte vet vilket ark som gäller) -->
+    <div id="sheetSetupOverlay" class="overlay hidden">
+      <div class="overlay-panel">
+        <h2>Koppla ditt kalkylark</h2>
+        <p id="sheetSetupMsg" class="muted small" style="margin: -6px 0 18px; line-height:1.55;"></p>
+
+        <button type="button" id="setupPickerBtn" class="btn btn-primary btn-wide setup-btn">📁 Välj befintligt i Google Drive</button>
+        <button type="button" id="setupCreateBtn" class="btn btn-secondary btn-wide setup-btn">Skapa nytt ark</button>
+
+        <p class="muted small" style="margin: 14px 0 8px;">Har du arkets ID eller länk?</p>
+        <div class="add-weapon-row">
+          <input type="text" id="setupSheetInput" class="input" placeholder="Kalkylarkets ID eller länk">
+          <button type="button" id="setupSheetBtn" class="btn btn-primary add-weapon-btn">Använd</button>
+        </div>
+
+        <div class="overlay-actions">
+          <button type="button" id="setupSignOutBtn" class="btn btn-secondary">Logga ut</button>
         </div>
       </div>
     </div>
@@ -256,7 +282,6 @@
   <!-- Anonym, aggregerad användningsräknare (GoatCounter) - inga cookies,
        inga personuppgifter, ingen koppling till ditt konto eller din data. -->
   <script data-goatcounter="https://cuteroadkill.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.0.0/jspdf.umd.min.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="config.js"></script>
   <script src="app.js"></script>
