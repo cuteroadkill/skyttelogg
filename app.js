@@ -1,10 +1,11 @@
 // =================================================================
 // Skyttelogg — app.js
 // Google Identity Services (inloggning) + Sheets API (databas)
+// + Google Picker (välja befintligt ark, krävs med drive.file-scopet)
 // =================================================================
 
 // Standardvapen som sätts upp första gången (i "Vapen"-fliken i arket).
-// Efter det är listan helt användarens egen - hanteras via "Hantera vapen".
+// Efter det är listan helt användarens egen - hanteras via kugghjulet.
 const DEFAULT_WEAPONS = [
   "Vapengrupp C (.22 LR)",
   "Vapengrupp A (9mm)",
@@ -12,6 +13,7 @@ const DEFAULT_WEAPONS = [
   "Gevär"
 ];
 let weaponsList = [];
+let weaponsRowCount = 0; // antal rader i Vapen-fliken senast vi läste/skrev
 
 // Fyra kurerade teman + möjlighet att välja valfri egen färg.
 // Bakgrund/text/ytor rörs aldrig - bara accentfärgen (mässing som standard).
@@ -21,8 +23,24 @@ const THEMES = [
   { id: "forest", name: "Skog",    hex: "#7FA65C", dim: "#5A7A3F", rgb: "127, 166, 92" },
   { id: "wine",   name: "Vinröd",  hex: "#B25A6B", dim: "#7D3E4A", rgb: "178, 90, 107" }
 ];
+
+// OBS: localStorage-nycklarna nedan heter fortfarande "msf_*" från tiden då
+// appen hette MSF Skyttelogg. Byt INTE namn på dem - då tappar alla befintliga
+// installationer sitt sparade ark, sitt tema och eventuella köade pass.
 const THEME_KEY = "msf_theme";
+const LOCAL_SHEET_KEY = "msf_spreadsheet_id";
+const QUEUE_KEY = "msf_pending_queue";
+const LOCATION_KEY = "skyttelogg_location";
+
 let currentThemeId = "brass";
+
+const DEFAULT_LOCATION = "Skjutbana";
+const SPREADSHEET_FILE_NAME = "Skyttelogg";
+const LOG_TAB_NAME = "Loggbok";
+const WEAPONS_TAB_NAME = "Vapen";
+const HEADER_ROW = ["Datum", "Aktivitet", "Vapengrupp/Typ", "Antal skott", "Plats/Förening", "Notering"];
+const JSPDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.0.0/jspdf.umd.min.js";
+const GAPI_URL = "https://apis.google.com/js/api.js";
 
 // ---------- Anonym användningsräkning (GoatCounter) ----------
 // Skickar aldrig persondata - bara "det här hände, en gång till". Om
@@ -37,20 +55,87 @@ function trackEvent(name) {
 }
 
 let accessToken = null;
+let tokenExpiresAt = 0;
 let tokenClient = null;
-let spreadsheetId = null;   // dynamiskt: från config.js ELLER auto-skapat ark
-let sheetTitle = null;   // fliknamnet, hämtas en gång vid inloggning
-let sheetGridId = null;  // numeriskt sheetId, används för sortering
+let spreadsheetId = null;      // från config.js, sparat på enheten, valt eller nyskapat
+let sheetTitle = null;         // loggflikens namn, hämtas vid anslutning
+let sheetGridId = null;        // numeriskt sheetId, används för sortering/radering
 let weaponsSheetGridId = null; // numeriskt sheetId för "Vapen"-fliken
+let appReady = false;          // true när ett ark är anslutet och laddat
 let currentMode = "training";
 
-const LOCAL_SHEET_KEY = "msf_spreadsheet_id";
-const LOCATION_KEY = "skyttelogg_location";
-const DEFAULT_LOCATION = "Skjutbana";
-const SPREADSHEET_FILE_NAME = "Skyttelogg";
-const QUEUE_KEY = "msf_pending_queue";
-const WEAPONS_TAB_NAME = "Vapen";
-const HEADER_ROW = ["Datum", "Aktivitet", "Vapengrupp/Typ", "Antal skott", "Plats/Förening", "Notering"];
+// ---------- Små hjälpare ----------
+function isHexColor(s) {
+  return typeof s === "string" && /^#[0-9a-f]{6}$/i.test(s);
+}
+
+// A1-notation med citerat fliknamn - fungerar även för flikar med
+// mellanslag eller specialtecken (t.ex. äldre ark med "Blad 1").
+function a1(tab, range) {
+  return encodeURIComponent(`'${String(tab).replace(/'/g, "''")}'!${range}`);
+}
+
+// Text som börjar med = + - @ tolkas annars som en formel av Google Sheets
+// (t.ex. noteringen "-5 i sidvind" blir #ERROR!). Ett inledande ' tvingar
+// fram ren text och syns inte i cellen.
+function safeText(v) {
+  const s = v === undefined || v === null ? "" : String(v);
+  return /^[=+\-@]/.test(s) ? "'" + s : s;
+}
+function sanitizeRow(row) {
+  return row.map((cell, i) => (i === 0 ? cell : safeText(cell)));
+}
+
+function localIsoDate(d) {
+  const tzOffset = d.getTimezoneOffset() * 60000;
+  return new Date(d - tzOffset).toISOString().slice(0, 10);
+}
+function todayLocalStr() {
+  return localIsoDate(new Date());
+}
+
+// Läser datum som rådata (serienummer) istället för arkets formaterade text,
+// så appen fungerar oavsett vilket språk/land arket är inställt på.
+function cellToIsoDate(v) {
+  if (typeof v === "number" && isFinite(v)) {
+    // 25569 = antal dagar mellan 1899-12-30 (Sheets epok) och 1970-01-01
+    return new Date(Math.round((Math.floor(v) - 25569) * 86400000)).toISOString().slice(0, 10);
+  }
+  return v === undefined || v === null ? "" : String(v).trim();
+}
+function normalizeRow(row) {
+  const out = [];
+  for (let i = 0; i < 6; i++) {
+    const v = row[i];
+    if (i === 0) out.push(cellToIsoDate(v));
+    else out.push(v === undefined || v === null ? "" : String(v));
+  }
+  return out;
+}
+function sameRow(a, b) {
+  const norm = r => normalizeRow(r || []).map(s => s.trim());
+  return JSON.stringify(norm(a)) === JSON.stringify(norm(b));
+}
+
+// Laddar ett externt skript en gång, vid behov (jsPDF, Google Picker).
+const scriptPromises = {};
+function loadScriptOnce(src) {
+  if (!scriptPromises[src]) {
+    scriptPromises[src] = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = true;
+      s.onload = resolve;
+      s.onerror = () => {
+        delete scriptPromises[src];
+        s.remove();
+        reject(new Error("Kunde inte ladda " + src));
+      };
+      document.head.appendChild(s);
+    });
+  }
+  return scriptPromises[src];
+}
 
 // ---------- Init ----------
 window.addEventListener("load", () => {
@@ -72,6 +157,16 @@ window.addEventListener("load", () => {
     link.classList.remove("hidden");
   }
 
+  // Utan API-nyckel kan filväljaren inte öppnas - dölj knapparna istället
+  // för att visa något som bara ger fel.
+  if (!CONFIG.PICKER_API_KEY) {
+    document.getElementById("pickerBtn").classList.add("hidden");
+    document.getElementById("setupPickerBtn").classList.add("hidden");
+    const createBtn = document.getElementById("setupCreateBtn");
+    createBtn.classList.remove("btn-secondary");
+    createBtn.classList.add("btn-primary");
+  }
+
   // Google-biblioteket laddas async — vänta tills det finns
   waitForGoogleLib(() => {
     tokenClient = google.accounts.oauth2.initTokenClient({
@@ -79,23 +174,24 @@ window.addEventListener("load", () => {
       scope: CONFIG.SCOPES,
       callback: onTokenReceived
     });
-    document.getElementById("signInBtn").disabled = false;
+    const btn = document.getElementById("signInBtn");
+    btn.textContent = "Logga in med Google";
+    btn.disabled = false;
   });
 });
 
-function waitForGoogleLib(cb) {
+function waitForGoogleLib(cb, waited = 0) {
   if (window.google && google.accounts && google.accounts.oauth2) return cb();
-  setTimeout(() => waitForGoogleLib(cb), 100);
-}
-
-function todayLocalStr() {
-  const d = new Date();
-  const tzOffset = d.getTimezoneOffset() * 60000;
-  return new Date(d - tzOffset).toISOString().slice(0, 10);
+  if (waited === 8000) {
+    document.getElementById("signInBtn").textContent =
+      "Väntar på Google… kontrollera uppkopplingen";
+  }
+  setTimeout(() => waitForGoogleLib(cb, waited + 100), 100);
 }
 
 function formatDateDisplay(isoStr) {
-  const [y, m, d] = isoStr.split("-");
+  const [y, m, d] = String(isoStr).split("-");
+  if (!m || !d) return String(isoStr);
   return `${y}/${m}/${d}`;
 }
 
@@ -122,10 +218,13 @@ function wireDatePicker(inputId, displayId) {
   });
 }
 
-// ---------- Inloggning ----------
+// ---------- Händelser ----------
 function wireStaticEvents() {
   document.getElementById("signInBtn").addEventListener("click", () => {
     tokenClient.requestAccessToken({ prompt: "" });
+  });
+  document.getElementById("reauthBanner").addEventListener("click", () => {
+    if (tokenClient) tokenClient.requestAccessToken({ prompt: "" });
   });
   document.getElementById("signOutBtn").addEventListener("click", signOut);
   document.getElementById("logBtn").addEventListener("click", submitLog);
@@ -153,11 +252,17 @@ function wireStaticEvents() {
     if (e.target.id === "exportOverlay") closeExportOverlay();
   });
 
-  // Vapenhantering
+  // Inställningar / vapenhantering
   document.getElementById("manageWeaponsBtn").addEventListener("click", openWeaponsOverlay);
   document.getElementById("weaponsCloseBtn").addEventListener("click", closeWeaponsOverlay);
   document.getElementById("addWeaponBtn").addEventListener("click", addWeapon);
   document.getElementById("pickerBtn").addEventListener("click", openDrivePicker);
+  document.getElementById("newWeaponInput").addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); addWeapon(); }
+  });
+  document.getElementById("weaponsOverlay").addEventListener("click", e => {
+    if (e.target.id === "weaponsOverlay") closeWeaponsOverlay();
+  });
 
   // Bjud mig på en kaffe
   if (CONFIG.SWISH_PARTS && CONFIG.SWISH_PARTS.length > 0) {
@@ -171,182 +276,119 @@ function wireStaticEvents() {
   document.getElementById("coffeeOverlay").addEventListener("click", e => {
     if (e.target.id === "coffeeOverlay") closeCoffeeOverlay();
   });
-  document.getElementById("newWeaponInput").addEventListener("keydown", e => {
-    if (e.key === "Enter") { e.preventDefault(); addWeapon(); }
-  });
-  document.getElementById("weaponsOverlay").addEventListener("click", e => {
-    if (e.target.id === "weaponsOverlay") closeWeaponsOverlay();
-  });
 
-  // Peka om till befintligt ark
-  document.getElementById("reconnectSheetBtn").addEventListener("click", async () => {
-    const input = document.getElementById("reconnectSheetInput");
-    const btn = document.getElementById("reconnectSheetBtn");
+  // Peka om till befintligt ark (Inställningar → Ark)
+  wireManualSheetInput("reconnectSheetInput", "reconnectSheetBtn", null);
+
+  // Koppla ark (visas när enheten inte vet vilket ark som gäller)
+  document.getElementById("setupPickerBtn").addEventListener("click", openDrivePicker);
+  document.getElementById("setupCreateBtn").addEventListener("click", createNewSheetFromSetup);
+  document.getElementById("setupSignOutBtn").addEventListener("click", signOut);
+  wireManualSheetInput("setupSheetInput", "setupSheetBtn", closeSheetSetup);
+}
+
+function wireManualSheetInput(inputId, btnId, onSuccess) {
+  const input = document.getElementById(inputId);
+  const btn = document.getElementById(btnId);
+  const run = async () => {
     if (!input.value.trim()) return;
     btn.disabled = true;
     try {
       await reconnectSheet(input.value);
       input.value = "";
+      if (onSuccess) onSuccess();
       showToast("Nu pekar appen på det arket!", false);
     } catch (e) {
-      showToast("Kunde inte använda det arket: " + e.message, true);
+      showToast(sheetErrorText(e), true);
     } finally {
       btn.disabled = false;
     }
+  };
+  btn.addEventListener("click", run);
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); run(); }
   });
 }
 
+// ---------- Inloggning / session ----------
 async function onTokenReceived(resp) {
   if (resp.error) {
     showToast("Inloggning misslyckades: " + resp.error, true);
     return;
   }
   accessToken = resp.access_token;
+  tokenExpiresAt = Date.now() + (Number(resp.expires_in) || 3600) * 1000;
+  hideReauthBanner();
+
   document.getElementById("signedOutView").classList.add("hidden");
   document.getElementById("appView").classList.remove("hidden");
   document.getElementById("topbarActions").classList.remove("hidden");
 
-  try {
-    await ensureSpreadsheet();
-    await loadSheetMeta();
-    await ensureWeaponsSheet();
-    await loadWeapons();
-    buildWeaponList();
-    document.getElementById("sheetLink").href =
-      `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+  // Förnyad session (efter "Sessionen gick ut") - allt är redan laddat,
+  // skicka bara iväg det som köats under tiden.
+  if (appReady) {
     await trySyncQueue();
     loadRecent();
-  } catch (e) {
-    showToast("Kunde inte läsa kalkylarket: " + e.message, true);
-  }
-}
-
-// Prioritetsordning för att avgöra vilket ark som ska användas:
-// 1. config.js pekar redan på ett specifikt ark (t.ex. en egen fristående
-//    installation) - använd det, rör ingenting mer.
-// 2. Redan känt på DEN HÄR enheten sedan tidigare (snabbaste vägen).
-// 3. Inget av ovan - skapa ett nytt ark, med rätt rubriker på plats.
-//
-// OBS: med drive.file-scopet kan appen inte längre söka igenom hela Driven
-// efter ett ark med rätt namn (det scopet ser bara filer appen redan fått
-// tillgång till). Byter man enhet måste man därför välja sitt befintliga
-// ark via Google-filväljaren under Inställningar → Ark, en gång.
-async function ensureSpreadsheet() {
-  if (CONFIG.SPREADSHEET_ID) {
-    spreadsheetId = CONFIG.SPREADSHEET_ID;
-    return;
-  }
-  const stored = localStorage.getItem(LOCAL_SHEET_KEY);
-  if (stored) {
-    spreadsheetId = stored;
     return;
   }
 
-  showToast("Skapar ditt kalkylark...", false);
+  // Vilket ark gäller?
+  // 1. config.js pekar på ett specifikt ark (fristående installation).
+  // 2. Arket den här enheten använde senast.
+  // 3. Inget känt - låt användaren välja befintligt ELLER skapa nytt.
+  //    (Med drive.file-scopet kan appen inte söka i Driven efter ett ark,
+  //    så ett automatiskt nytt ark skulle bli en tom dubblett för den som
+  //    redan har historik.)
+  const knownId = CONFIG.SPREADSHEET_ID || localStorage.getItem(LOCAL_SHEET_KEY);
+  if (!knownId) {
+    openSheetSetup();
+    return;
+  }
 
-  const created = await sheetsFetch("", {
-    method: "POST",
-    body: JSON.stringify({
-      properties: { title: SPREADSHEET_FILE_NAME },
-      sheets: [{ properties: { title: "Loggbok" } }]
-    })
-  });
-  spreadsheetId = created.spreadsheetId;
-
-  const headerRange = encodeURIComponent("Loggbok!A1:F1");
-  await sheetsFetch(
-    `${spreadsheetId}/values/${headerRange}?valueInputOption=USER_ENTERED`,
-    { method: "PUT", body: JSON.stringify({ values: [HEADER_ROW] }) }
-  );
-
-  // Fetstil på rubrikraden - litet estetiskt plus, inget kritiskt om det misslyckas
   try {
-    await sheetsFetch(`${spreadsheetId}:batchUpdate`, {
-      method: "POST",
-      body: JSON.stringify({
-        requests: [{
-          repeatCell: {
-            range: { sheetId: 0, startRowIndex: 0, endRowIndex: 1 },
-            cell: { userEnteredFormat: { textFormat: { bold: true } } },
-            fields: "userEnteredFormat.textFormat.bold"
-          }
-        }]
-      })
-    });
-  } catch (e) { /* kosmetiskt, strunta i fel här */ }
-
-  localStorage.setItem(LOCAL_SHEET_KEY, spreadsheetId);
-  showToast("Ditt kalkylark är klart!", false);
-}
-
-// Peka om till ett specifikt, befintligt ark - antingen valt via Google-
-// filväljaren (Picker) eller inklistrat ID/länk manuellt som reserv.
-// Skriver INTE över spreadsheetId permanent i configen - bara i den här
-// enhetens lokala minne, precis som auto-skapandet gör.
-async function reconnectSheet(idOrUrl) {
-  let id = idOrUrl.trim();
-  const match = id.match(/\/d\/([a-zA-Z0-9-_]+)/);
-  if (match) id = match[1];
-  if (!id) throw new Error("Inget ID angavs.");
-
-  spreadsheetId = id;
-  await loadSheetMeta();       // verifierar samtidigt att ID:t är giltigt och nåbart
-  await ensureWeaponsSheet();
-  await loadWeapons();
-  buildWeaponList();
-  localStorage.setItem(LOCAL_SHEET_KEY, spreadsheetId);
-  document.getElementById("sheetLink").href =
-    `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-  loadRecent();
-}
-
-// ---------- Google Picker (filväljare för "Ark"-inställningen) ----------
-// Laddas lat - bara när man faktiskt trycker på "Välj i Drive", så den
-// inte tynger ner appens starttid för alla som aldrig behöver den.
-let pickerLoaded = false;
-
-function openDrivePicker() {
-  if (!CONFIG.PICKER_API_KEY) {
-    showToast("Picker är inte konfigurerad (saknar API-nyckel).", true);
-    return;
-  }
-  if (pickerLoaded) {
-    showPickerDialog();
-    return;
-  }
-  const script = document.createElement("script");
-  script.src = "https://apis.google.com/js/api.js";
-  script.onload = () => {
-    gapi.load("picker", () => {
-      pickerLoaded = true;
-      showPickerDialog();
-    });
-  };
-  document.head.appendChild(script);
-}
-
-function showPickerDialog() {
-  const view = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS)
-    .setMode(google.picker.DocsViewMode.LIST);
-
-  const picker = new google.picker.PickerBuilder()
-    .addView(view)
-    .setOAuthToken(accessToken)
-    .setDeveloperKey(CONFIG.PICKER_API_KEY)
-    .setCallback(pickerCallback)
-    .build();
-  picker.setVisible(true);
-}
-
-async function pickerCallback(data) {
-  if (data.action !== google.picker.Action.PICKED) return;
-  const fileId = data.docs[0].id;
-  try {
-    await reconnectSheet(fileId);
-    showToast("Nu pekar appen på det arket!", false);
+    await connectSheet(knownId);
   } catch (e) {
-    showToast("Kunde inte använda det arket: " + e.message, true);
+    if (isSheetUnreachable(e)) {
+      openSheetSetup(
+        "Appen kommer inte åt arket den här enheten använde senast " +
+        "(vanligt efter byte av telefon eller behörighet). Välj ditt " +
+        "befintliga ark för att behålla historiken — skapa bara ett nytt " +
+        "om du vill börja om."
+      );
+    } else {
+      showToast("Kunde inte läsa kalkylarket: " + e.message, true);
+    }
   }
+}
+
+function isSheetUnreachable(e) {
+  return e && (e.status === 404 || (e.status === 403 && /permission/i.test(e.message || "")));
+}
+
+function sheetErrorText(e) {
+  if (isSheetUnreachable(e)) {
+    return "Appen har inte åtkomst till det arket. Välj det via Google Drive-knappen istället.";
+  }
+  return "Kunde inte använda det arket: " + e.message;
+}
+
+function tokenIsValid() {
+  return !!accessToken && Date.now() < tokenExpiresAt - 60000;
+}
+
+function sessionExpiredError() {
+  accessToken = null;
+  showReauthBanner();
+  const err = new Error("Sessionen gick ut — tryck på \"Logga in igen\".");
+  err.authExpired = true;
+  return err;
+}
+
+function showReauthBanner() {
+  document.getElementById("reauthBanner").classList.remove("hidden");
+}
+function hideReauthBanner() {
+  document.getElementById("reauthBanner").classList.add("hidden");
 }
 
 function signOut() {
@@ -354,15 +396,189 @@ function signOut() {
     google.accounts.oauth2.revoke(accessToken, () => {});
   }
   accessToken = null;
+  tokenExpiresAt = 0;
+  appReady = false;
+  spreadsheetId = null;
+  recentRowsCache = {};
+  hideReauthBanner();
+  closeSheetSetup();
+  document.querySelectorAll(".overlay").forEach(o => o.classList.add("hidden"));
   document.getElementById("appView").classList.add("hidden");
   document.getElementById("topbarActions").classList.add("hidden");
   document.getElementById("signedOutView").classList.remove("hidden");
+}
+
+// ---------- Koppla ark ----------
+// Ansluter appen till ett ark: verifierar åtkomst, ser till att Vapen-
+// fliken finns, laddar vapen och senaste pass. Misslyckas verifieringen
+// behåller appen det ark den hade innan.
+async function connectSheet(id) {
+  const previousId = spreadsheetId;
+  spreadsheetId = id;
+  try {
+    await loadSheetMeta(); // verifierar samtidigt att ID:t är giltigt och nåbart
+  } catch (e) {
+    spreadsheetId = previousId;
+    throw e;
+  }
+  await ensureWeaponsSheet();
+  await loadWeapons();
+  buildWeaponList();
+  if (!CONFIG.SPREADSHEET_ID) localStorage.setItem(LOCAL_SHEET_KEY, spreadsheetId);
+  document.getElementById("sheetLink").href =
+    `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+  appReady = true;
+  await trySyncQueue();
+  loadRecent();
+}
+
+async function reconnectSheet(idOrUrl) {
+  let id = String(idOrUrl).trim();
+  const match = id.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  if (match) id = match[1];
+  if (!id) throw new Error("Inget ID angavs.");
+  await connectSheet(id);
+}
+
+function openSheetSetup(message) {
+  document.getElementById("sheetSetupMsg").textContent = message ||
+    "Den här enheten vet inte vilket ark den ska använda. Har du loggat " +
+    "pass förut — välj ditt befintliga ark så fortsätter historiken där. " +
+    "Första gången? Skapa ett nytt.";
+  document.getElementById("sheetSetupOverlay").classList.remove("hidden");
+}
+
+function closeSheetSetup() {
+  document.getElementById("sheetSetupOverlay").classList.add("hidden");
+}
+
+async function createNewSheetFromSetup() {
+  const btn = document.getElementById("setupCreateBtn");
+  btn.disabled = true;
+  try {
+    const id = await createSpreadsheet();
+    await connectSheet(id);
+    closeSheetSetup();
+    showToast("Ditt kalkylark är klart!", false);
+  } catch (e) {
+    showToast("Kunde inte skapa arket: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function createSpreadsheet() {
+  showToast("Skapar ditt kalkylark...", false);
+
+  // Svensk locale gör att datum, decimaler m.m. beter sig likadant för
+  // alla, oavsett vilket språk Google-kontot är inställt på.
+  const created = await sheetsFetch("", {
+    method: "POST",
+    body: JSON.stringify({
+      properties: { title: SPREADSHEET_FILE_NAME, locale: "sv_SE", timeZone: "Europe/Stockholm" },
+      sheets: [{ properties: { title: LOG_TAB_NAME } }]
+    })
+  });
+  const id = created.spreadsheetId;
+  const firstSheet = created.sheets && created.sheets[0] && created.sheets[0].properties;
+  const gridId = firstSheet ? firstSheet.sheetId : 0;
+
+  await sheetsFetch(
+    `${id}/values/${a1(LOG_TAB_NAME, "A1:F1")}?valueInputOption=RAW`,
+    { method: "PUT", body: JSON.stringify({ values: [HEADER_ROW] }) }
+  );
+
+  // Fetstil på rubrikraden - kosmetiskt, inget kritiskt om det misslyckas
+  try {
+    await sheetsFetch(`${id}:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({
+        requests: [{
+          repeatCell: {
+            range: { sheetId: gridId, startRowIndex: 0, endRowIndex: 1 },
+            cell: { userEnteredFormat: { textFormat: { bold: true } } },
+            fields: "userEnteredFormat.textFormat.bold"
+          }
+        }]
+      })
+    });
+  } catch (e) { /* kosmetiskt */ }
+
+  return id;
+}
+
+// ---------- Google Picker (filväljare) ----------
+// Laddas först när någon faktiskt trycker på knappen.
+let pickerReady = null;
+
+function loadPicker() {
+  if (!pickerReady) {
+    pickerReady = loadScriptOnce(GAPI_URL)
+      .then(() => new Promise(resolve => gapi.load("picker", resolve)))
+      .catch(e => { pickerReady = null; throw e; });
+  }
+  return pickerReady;
+}
+
+// Projektnumret är siffrorna först i OAuth-klientens ID. Picker behöver det
+// (setAppId) för att en vald fil ska räknas som "öppnad av appen" - utan det
+// ger drive.file-scopet ingen åtkomst till filen man valt.
+function getCloudProjectNumber() {
+  const m = String(CONFIG.CLIENT_ID || "").match(/^(\d+)-/);
+  return m ? m[1] : null;
+}
+
+async function openDrivePicker() {
+  if (!CONFIG.PICKER_API_KEY) {
+    showToast("Filväljaren är inte konfigurerad (saknar API-nyckel).", true);
+    return;
+  }
+  if (!tokenIsValid()) {
+    showReauthBanner();
+    showToast("Sessionen har gått ut — logga in igen först.", true);
+    return;
+  }
+  try {
+    await loadPicker();
+  } catch (e) {
+    showToast("Kunde inte ladda Googles filväljare. Kontrollera uppkopplingen.", true);
+    return;
+  }
+
+  const view = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS)
+    .setMode(google.picker.DocsViewMode.LIST);
+
+  const builder = new google.picker.PickerBuilder()
+    .addView(view)
+    .setOAuthToken(accessToken)
+    .setDeveloperKey(CONFIG.PICKER_API_KEY)
+    .setLocale("sv")
+    .setCallback(pickerCallback);
+
+  const projectNumber = getCloudProjectNumber();
+  if (projectNumber) builder.setAppId(projectNumber);
+
+  builder.build().setVisible(true);
+}
+
+async function pickerCallback(data) {
+  if (data.action !== google.picker.Action.PICKED) return;
+  const fileId = data.docs[0].id;
+  try {
+    await reconnectSheet(fileId);
+    closeSheetSetup();
+    showToast("Nu pekar appen på det arket!", false);
+  } catch (e) {
+    showToast(sheetErrorText(e), true);
+  }
 }
 
 // ---------- Sheets API ----------
 const SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 
 async function sheetsFetch(path, options = {}) {
+  if (!tokenIsValid()) throw sessionExpiredError();
+
   const url = path ? `${SHEETS_BASE}/${path}` : SHEETS_BASE;
   const res = await fetch(url, {
     ...options,
@@ -372,33 +588,40 @@ async function sheetsFetch(path, options = {}) {
       ...(options.headers || {})
     }
   });
-  if (res.status === 401) {
-    // Token har gått ut - be om en ny och avbryt det här anropet
-    accessToken = null;
-    tokenClient.requestAccessToken({ prompt: "" });
-    throw new Error("Sessionen gick ut, logga in igen.");
-  }
+  if (res.status === 401) throw sessionExpiredError();
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error?.message || `HTTP ${res.status}`);
+    const err = new Error((body.error && body.error.message) || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
 
-async function loadSheetMeta() {
+// Läser loggrader som rådata och normaliserar dem till 6 textceller med
+// datum i ISO-format (ÅÅÅÅ-MM-DD), oberoende av arkets språkinställning.
+async function readLogRows(range) {
   const data = await sheetsFetch(
-    `${spreadsheetId}?fields=sheets.properties`
+    `${spreadsheetId}/values/${a1(sheetTitle, range)}` +
+    `?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`
   );
+  return (data.values || []).map(normalizeRow);
+}
+
+async function loadSheetMeta() {
+  const data = await sheetsFetch(`${spreadsheetId}?fields=sheets.properties`);
   const all = data.sheets.map(s => s.properties);
-  const logSheet = all.find(s => s.title !== WEAPONS_TAB_NAME) || all[0];
+  const logSheet =
+    all.find(s => s.title === LOG_TAB_NAME) ||
+    all.find(s => s.title !== WEAPONS_TAB_NAME) ||
+    all[0];
   sheetTitle = logSheet.title;
   sheetGridId = logSheet.sheetId;
   const weaponsSheet = all.find(s => s.title === WEAPONS_TAB_NAME);
   weaponsSheetGridId = weaponsSheet ? weaponsSheet.sheetId : null;
 }
 
-// Skapar fliken "Vapen" om den inte redan finns, och fyller den med
-// standardvapnen som utgångspunkt (samma text som redan används i arket).
+// Skapar fliken "Vapen" om den inte redan finns, med standardvapnen.
 async function ensureWeaponsSheet() {
   if (weaponsSheetGridId !== null) return;
 
@@ -410,68 +633,78 @@ async function ensureWeaponsSheet() {
   });
   weaponsSheetGridId = result.replies[0].addSheet.properties.sheetId;
 
-  const range = encodeURIComponent(`${WEAPONS_TAB_NAME}!A1:B${DEFAULT_WEAPONS.length}`);
   await sheetsFetch(
-    `${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
+    `${spreadsheetId}/values/${a1(WEAPONS_TAB_NAME, `A1:B${DEFAULT_WEAPONS.length}`)}?valueInputOption=RAW`,
     { method: "PUT", body: JSON.stringify({ values: DEFAULT_WEAPONS.map(w => [w, ""]) }) }
   );
+  weaponsRowCount = DEFAULT_WEAPONS.length;
 }
 
 async function loadWeapons() {
   try {
-    const range = encodeURIComponent(`${WEAPONS_TAB_NAME}!A:B`);
-    const data = await sheetsFetch(`${spreadsheetId}/values/${range}`);
-    const values = (data.values || [])
-      .map(r => ({ name: (r[0] || "").trim(), favorite: r[1] === "1" }))
+    const data = await sheetsFetch(`${spreadsheetId}/values/${a1(WEAPONS_TAB_NAME, "A:B")}`);
+    const raw = data.values || [];
+    weaponsRowCount = raw.length;
+    const values = raw
+      .map(r => ({ name: String(r[0] || "").trim(), favorite: r[1] === "1" }))
       .filter(w => w.name);
     weaponsList = values.length > 0
       ? values
       : DEFAULT_WEAPONS.map(name => ({ name, favorite: false }));
   } catch (e) {
     weaponsList = DEFAULT_WEAPONS.map(name => ({ name, favorite: false })); // reserv
+    weaponsRowCount = 100; // okänt - töm generöst vid nästa sparning
   }
 }
 
-async function saveWeapons(list) {
-  // Rensa hela intervallet först - annars kan borttagna vapen bli kvar
-  // som spökrader om nya listan är kortare än den gamla.
-  await sheetsFetch(
-    `${spreadsheetId}/values/${encodeURIComponent(WEAPONS_TAB_NAME + "!A:B")}:clear`,
-    { method: "POST" }
-  );
-  if (list.length > 0) {
-    const range = encodeURIComponent(`${WEAPONS_TAB_NAME}!A1:B${list.length}`);
-    await sheetsFetch(
-      `${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
-      { method: "PUT", body: JSON.stringify({ values: list.map(w => [w.name, w.favorite ? "1" : ""]) }) }
+// Sparar hela listan i ETT anrop (istället för "rensa, sedan skriv"), så
+// listan aldrig kan bli tom i arket om skrivningen misslyckas. Överskjutande
+// gamla rader skrivs över med tomt. Sparningar körs i tur och ordning, så
+// snabba klick (stjärna, dra, ta bort) inte kan krocka.
+let weaponsSaveChain = Promise.resolve();
+
+function saveWeapons(list) {
+  const snapshot = list.map(w => [w.name, w.favorite ? "1" : ""]);
+  const run = async () => {
+    const total = Math.max(snapshot.length, weaponsRowCount, 1);
+    const values = snapshot.concat(
+      Array.from({ length: total - snapshot.length }, () => ["", ""])
     );
-  }
+    await sheetsFetch(
+      `${spreadsheetId}/values/${a1(WEAPONS_TAB_NAME, `A1:B${total}`)}?valueInputOption=RAW`,
+      { method: "PUT", body: JSON.stringify({ values }) }
+    );
+    weaponsRowCount = snapshot.length;
+  };
+  const p = weaponsSaveChain.then(run, run);
+  weaponsSaveChain = p.catch(() => {});
+  return p;
 }
 
-let recentRowsCache = {}; // radnummer (1-indexerat i arket) -> radens värden
+// ---------- Senaste pass ----------
+let recentRowsCache = {}; // radnummer (1-indexerat i arket) -> normaliserad rad
 
 async function loadRecent() {
+  if (!appReady) return;
   const list = document.getElementById("recentList");
   list.innerHTML = `<p class="muted small">Laddar...</p>`;
   try {
-    const range = encodeURIComponent(`${sheetTitle}!A2:F`);
-    const data = await sheetsFetch(
-      `${spreadsheetId}/values/${range}`
-    );
-    const allRows = data.values || [];
-    // Arket sorteras redan nyast-först vid varje loggning (se sortSheetByDateDesc),
-    // så de FÖRSTA raderna är de senaste - ingen omvändning behövs.
-    const rows = allRows.slice(0, 8);
+    // Arket sorteras nyast-först vid varje loggning (se sortSheetByDateDesc),
+    // så rad 2–9 är de åtta senaste.
+    const rows = await readLogRows("A2:F9");
     recentRowsCache = {};
-    if (rows.length === 0) {
+    const cards = [];
+    rows.forEach((row, i) => {
+      if (row.every(c => !c.trim())) return; // hoppa över tomma rader
+      const rowNumber = i + 2;
+      recentRowsCache[rowNumber] = row;
+      cards.push(rowToCard(row, rowNumber));
+    });
+    if (cards.length === 0) {
       list.innerHTML = `<p class="muted small">Inga pass loggade ännu.</p>`;
       return;
     }
-    list.innerHTML = rows.map((row, i) => {
-      const rowNumber = i + 2; // rad 2 i arket = första dataraden (efter rubriken)
-      recentRowsCache[rowNumber] = row;
-      return rowToCard(row, rowNumber);
-    }).join("");
+    list.innerHTML = cards.join("");
     list.querySelectorAll(".recent-item").forEach(el => {
       el.addEventListener("click", () => openEditOverlay(parseInt(el.dataset.row, 10)));
     });
@@ -501,10 +734,9 @@ function escapeHtml(s) {
 }
 
 async function appendRows(rows) {
-  const range = encodeURIComponent(`${sheetTitle}!A:F`);
   await sheetsFetch(
-    `${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
-    { method: "POST", body: JSON.stringify({ values: rows }) }
+    `${spreadsheetId}/values/${a1(sheetTitle, "A:F")}:append?valueInputOption=USER_ENTERED`,
+    { method: "POST", body: JSON.stringify({ values: rows.map(sanitizeRow) }) }
   );
 }
 
@@ -528,10 +760,9 @@ async function sortSheetByDateDesc() {
 }
 
 // ---------- Offline-kö ----------
-// Om loggning misslyckas pga uteblivet nätverk sparas passet lokalt på
-// enheten (bara som en tillfällig buffert - den riktiga datan lever i
-// arket så fort synk lyckas) och skickas automatiskt så fort uppkoppling
-// finns igen.
+// Om loggning misslyckas pga uteblivet nätverk eller utgången session sparas
+// passet lokalt på enheten (bara som tillfällig buffert) och skickas
+// automatiskt så fort det går igen.
 function getQueue() {
   try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); }
   catch (e) { return []; }
@@ -561,25 +792,32 @@ function queueRows(rows) {
   setQueue(queue);
 }
 
+let syncInProgress = false;
+
 async function trySyncQueue() {
-  if (!accessToken || !spreadsheetId) return;
+  if (!appReady || !tokenIsValid() || !spreadsheetId || syncInProgress) return;
   let queue = getQueue();
   if (queue.length === 0) return;
 
+  syncInProgress = true;
   let syncedAny = false;
-  while (queue.length > 0) {
-    try {
-      await appendRows(queue[0].rows);
-      queue.shift();
-      setQueue(queue);
-      syncedAny = true;
-    } catch (e) {
-      break; // fortfarande offline (eller annat fel) - försök igen nästa gång
+  try {
+    while (queue.length > 0) {
+      try {
+        await appendRows(queue[0].rows);
+        queue.shift();
+        setQueue(queue);
+        syncedAny = true;
+      } catch (e) {
+        break; // fortfarande offline (eller annat fel) - försök igen nästa gång
+      }
     }
+  } finally {
+    syncInProgress = false;
   }
 
   if (syncedAny) {
-    try { await sortSheetByDateDesc(); } catch (e) { /* strunta i, kosmetiskt */ }
+    try { await sortSheetByDateDesc(); } catch (e) { /* kosmetiskt */ }
     showToast("Köade pass synkade!", false);
     loadRecent();
   }
@@ -590,9 +828,9 @@ function buildWeaponList() {
   const container = document.getElementById("weaponList");
   container.innerHTML = "";
 
-  weaponsList.forEach(w => container.appendChild(weaponChip(w.name, w.name)));
+  weaponsList.forEach(w => container.appendChild(weaponChip(w.name)));
 
-  // Fritextchip för valfritt vapen - alltid tillgängligt, oavsett hanterad lista
+  // Fritextchip för valfritt vapen - alltid tillgängligt
   const chip = document.createElement("label");
   chip.className = "weapon-chip weapon-chip--custom";
   chip.dataset.weapon = "";
@@ -646,17 +884,21 @@ function selectPresetTheme(id) {
 }
 
 function selectCustomTheme(hex) {
+  if (!isHexColor(hex)) return;
   applyThemeColors(hex, darkenHex(hex, 0.62), hexToRgbTriple(hex), "custom");
   localStorage.setItem(THEME_KEY, JSON.stringify({ id: "custom", hex }));
 }
 
+function getSavedTheme() {
+  try { return JSON.parse(localStorage.getItem(THEME_KEY) || "null"); }
+  catch (e) { return null; }
+}
+
 function loadSavedTheme() {
-  let saved;
-  try { saved = JSON.parse(localStorage.getItem(THEME_KEY) || "null"); }
-  catch (e) { saved = null; }
+  const saved = getSavedTheme();
   if (!saved) return;
 
-  if (saved.id === "custom" && saved.hex) {
+  if (saved.id === "custom" && isHexColor(saved.hex)) {
     applyThemeColors(saved.hex, darkenHex(saved.hex, 0.62), hexToRgbTriple(saved.hex), "custom");
   } else {
     const t = THEMES.find(t => t.id === saved.id);
@@ -666,8 +908,9 @@ function loadSavedTheme() {
 
 function renderThemeSwatches() {
   const container = document.getElementById("themeSwatches");
-  const customHex = currentThemeId === "custom"
-    ? (JSON.parse(localStorage.getItem(THEME_KEY) || "{}").hex || "#C4915E")
+  const saved = getSavedTheme();
+  const customHex = currentThemeId === "custom" && saved && isHexColor(saved.hex)
+    ? saved.hex
     : "#C4915E";
 
   container.innerHTML = THEMES.map(t => `
@@ -696,15 +939,12 @@ function updateActiveSwatch() {
 }
 
 // ---------- Bjud mig på en kaffe (Swish) ----------
-// Numret byggs ihop här, i minnet, bara när panelen öppnas - det ligger
-// aldrig som en hel, sökbar siffersträng i sidans källkod.
 function getSwishNumber() {
   return (CONFIG.SWISH_PARTS || []).join("");
 }
 
 function openCoffeeOverlay() {
-  const number = getSwishNumber();
-  document.getElementById("swishNumberDisplay").textContent = number;
+  document.getElementById("swishNumberDisplay").textContent = getSwishNumber();
   document.getElementById("coffeeOverlay").classList.remove("hidden");
 }
 
@@ -715,8 +955,7 @@ function closeCoffeeOverlay() {
 function openSwishApp() {
   const number = getSwishNumber();
   if (!number) return;
-  // Svenskt format utan inledande nolla + landskod, det format Swish
-  // förväntar sig i betalningslänkar.
+  // Internationellt format utan inledande nolla, som Swish-länkar förväntar sig.
   const intNumber = "46" + number.replace(/^0/, "");
   const payload = {
     version: 1,
@@ -731,16 +970,15 @@ function openSwishApp() {
 }
 
 async function copySwishNumber() {
-  const number = getSwishNumber();
   try {
-    await navigator.clipboard.writeText(number);
+    await navigator.clipboard.writeText(getSwishNumber());
     showToast("Numret kopierat!", false);
   } catch (e) {
     showToast("Kunde inte kopiera - markera numret manuellt.", true);
   }
 }
 
-// ---------- Hantera vapen (overlay) ----------
+// ---------- Inställningar (overlay) ----------
 function openWeaponsOverlay() {
   renderThemeSwatches();
   renderWeaponsManageList();
@@ -794,9 +1032,7 @@ function toggleFavorite(index) {
 }
 
 // ---------- Dra för att ändra ordning ----------
-// Fungerar med både touch och mus via Pointer Events. Endast själva
-// handtaget (de två strecken) startar en dragning, inte hela raden -
-// annars kolliderar det med tryck på stjärna/kryss.
+// Pointer Events (touch + mus). Endast handtaget startar en dragning.
 let dragState = null;
 
 function wireDragHandle(row) {
@@ -846,11 +1082,11 @@ function wireDragHandle(row) {
 
 async function persistAndRefreshWeapons() {
   renderWeaponsManageList();
+  buildWeaponList();
   try {
     await saveWeapons(weaponsList);
-    buildWeaponList();
   } catch (e) {
-    showToast("Kunde inte spara: " + e.message, true);
+    showToast("Kunde inte spara vapenlistan: " + e.message, true);
   }
 }
 
@@ -872,13 +1108,13 @@ async function removeWeapon(index) {
   await persistAndRefreshWeapons();
 }
 
-function weaponChip(value, label) {
+function weaponChip(name) {
   const chip = document.createElement("label");
   chip.className = "weapon-chip";
-  chip.dataset.weapon = value;
+  chip.dataset.weapon = name;
   chip.innerHTML = `
     <input type="checkbox" class="chip-input">
-    <span class="chip-label">${label}</span>
+    <span class="chip-label">${escapeHtml(name)}</span>
     <span class="chip-stepper">
       <button type="button" class="step-btn" data-delta="-0.5">−</button>
       <span class="amount mono" data-val="1">1</span>
@@ -899,8 +1135,7 @@ function wireChip(chip, isCustom) {
 
   if (isCustom) {
     const nameInput = chip.querySelector(".custom-name");
-    // Skriver man i fältet räknas raden som vald - annars måste man
-    // kryssa i den manuellt trots att den saknar synlig kryssruta
+    // Skriver man i fältet räknas raden som vald
     nameInput.addEventListener("click", e => e.stopPropagation());
     nameInput.addEventListener("input", () => {
       cb.checked = nameInput.value.trim().length > 0;
@@ -970,7 +1205,7 @@ function showToast(msg, isError) {
   toast.classList.add(isError ? "toast-error" : "toast-success");
   toast.classList.add("visible");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove("visible"), 2800);
+  toastTimer = setTimeout(() => toast.classList.remove("visible"), isError ? 4500 : 2800);
 }
 
 // ---------- Reset ----------
@@ -1000,7 +1235,8 @@ function openEditOverlay(rowNumber) {
   if (!row) return;
   editingRow = rowNumber;
   const [date, activity, weapon, amount, location, note] = row;
-  setDateFor("editDateInput", "editDateDisplay", date || todayLocalStr());
+  setDateFor("editDateInput", "editDateDisplay",
+    /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayLocalStr());
   document.getElementById("editActivity").value = activity || "";
   document.getElementById("editWeapon").value = weapon || "";
   document.getElementById("editLocation").value = location || DEFAULT_LOCATION;
@@ -1012,6 +1248,28 @@ function openEditOverlay(rowNumber) {
 function closeEditOverlay() {
   document.getElementById("editOverlay").classList.add("hidden");
   editingRow = null;
+}
+
+// Radnumret kommer från när listan laddades. Har arket ändrats sedan dess
+// (kösynk, annan enhet, sortering) kan samma nummer peka på ett annat pass -
+// kontrollera därför att raden fortfarande är exakt densamma innan vi
+// skriver över eller raderar den.
+async function assertRowUnchanged(rowNumber) {
+  const [current] = await readLogRows(`A${rowNumber}:F${rowNumber}`);
+  const cached = recentRowsCache[rowNumber];
+  if (!current || !cached || !sameRow(current, cached)) {
+    const err = new Error("Arket har ändrats sedan listan laddades. Listan är uppdaterad — öppna passet igen.");
+    err.rowChanged = true;
+    throw err;
+  }
+}
+
+function handleEditError(e) {
+  showToast(e.rowChanged ? e.message : "Ett fel uppstod: " + e.message, true);
+  if (e.rowChanged) {
+    closeEditOverlay();
+    loadRecent();
+  }
 }
 
 async function saveEditedRow() {
@@ -1030,20 +1288,22 @@ async function saveEditedRow() {
   const btn = document.getElementById("editSaveBtn");
   btn.disabled = true;
   try {
-    const range = encodeURIComponent(`${sheetTitle}!A${editingRow}:F${editingRow}`);
+    await assertRowUnchanged(editingRow);
     await sheetsFetch(
-      `${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
-      { method: "PUT", body: JSON.stringify({ values: [[date, activity, weapon, amount, location, note]] }) }
+      `${spreadsheetId}/values/${a1(sheetTitle, `A${editingRow}:F${editingRow}`)}?valueInputOption=USER_ENTERED`,
+      { method: "PUT", body: JSON.stringify({ values: [sanitizeRow([date, activity, weapon, amount, location, note])] }) }
     );
-    await sortSheetByDateDesc();
-    showToast("Passet uppdaterat!", false);
-    closeEditOverlay();
-    loadRecent();
   } catch (e) {
-    showToast("Ett fel uppstod: " + e.message, true);
-  } finally {
+    handleEditError(e);
     btn.disabled = false;
+    return;
   }
+
+  try { await sortSheetByDateDesc(); } catch (e) { /* kosmetiskt */ }
+  showToast("Passet uppdaterat!", false);
+  closeEditOverlay();
+  loadRecent();
+  btn.disabled = false;
 }
 
 async function deleteEditedRow() {
@@ -1053,6 +1313,7 @@ async function deleteEditedRow() {
   const btn = document.getElementById("editDeleteBtn");
   btn.disabled = true;
   try {
+    await assertRowUnchanged(editingRow);
     await sheetsFetch(`${spreadsheetId}:batchUpdate`, {
       method: "POST",
       body: JSON.stringify({
@@ -1067,7 +1328,7 @@ async function deleteEditedRow() {
     closeEditOverlay();
     loadRecent();
   } catch (e) {
-    showToast("Ett fel uppstod: " + e.message, true);
+    handleEditError(e);
   } finally {
     btn.disabled = false;
   }
@@ -1078,7 +1339,7 @@ async function deleteEditedRow() {
 // OCH vilken enhet det var - de två går inte att slå ihop till samma summa.
 function parseAmount(str) {
   if (!str) return { value: 0, unit: null };
-  const s = str.trim();
+  const s = String(str).trim();
   if (/skott$/.test(s)) {
     const n = parseInt(s, 10);
     return { value: isNaN(n) ? 0 : n, unit: "skott" };
@@ -1097,8 +1358,7 @@ function buildSummary(rows) {
 
   rows.forEach(row => {
     const [, activity, rawWeapon, amount] = row;
-    // Normalisera bort dubbla mellanslag / osynliga tecken, så att äldre
-    // loggposter med lite olika skrivsätt av samma vapen slås ihop korrekt.
+    // Normalisera bort dubbla mellanslag, så att olika skrivsätt slås ihop.
     const weapon = (rawWeapon || "").replace(/\s+/g, " ").trim();
     if (weapon) {
       if (!weaponStats[weapon]) weaponStats[weapon] = { sessions: 0, tavling: 0, askTotal: 0, skottTotal: 0 };
@@ -1117,12 +1377,10 @@ function buildSummary(rows) {
 }
 
 function openExportOverlay() {
-  const today = todayLocalStr();
   const d = new Date();
   d.setFullYear(d.getFullYear() - 1);
-  const yearAgo = d.toISOString().slice(0, 10);
-  setDateFor("exportFromInput", "exportFromDisplay", yearAgo);
-  setDateFor("exportToInput", "exportToDisplay", today);
+  setDateFor("exportFromInput", "exportFromDisplay", localIsoDate(d));
+  setDateFor("exportToInput", "exportToDisplay", todayLocalStr());
   document.getElementById("exportOverlay").classList.remove("hidden");
 }
 
@@ -1141,9 +1399,14 @@ async function generatePdf() {
   showToast("Skapar PDF...", false);
 
   try {
-    const range = encodeURIComponent(`${sheetTitle}!A2:F`);
-    const data = await sheetsFetch(`${spreadsheetId}/values/${range}`);
-    const rows = (data.values || [])
+    // jsPDF laddas först här, så appens start inte tyngs av den.
+    try {
+      await loadScriptOnce(JSPDF_URL);
+    } catch (e) {
+      throw new Error("Kunde inte ladda PDF-verktyget. Kontrollera uppkopplingen.");
+    }
+
+    const rows = (await readLogRows("A2:F"))
       .filter(r => r[0] && r[0] >= from && r[0] <= to)
       .sort((a, b) => a[0].localeCompare(b[0])); // kronologisk i PDF:en, äldst först
 
@@ -1201,7 +1464,6 @@ function buildPdf(rows, from, to) {
 
     const nameColWidth = 62;
     const passColX = marginX + 66;
-    const passColWidth = 40;
     const totalColX = marginX + 110;
     const totalColWidth = pageWidth - marginX - totalColX;
     const summaryLineHeight = 4.2;
@@ -1216,10 +1478,6 @@ function buildPdf(rows, from, to) {
       const skottText = s.skottTotal > 0 ? `${s.skottTotal} skott` : "";
       const totalText = [askText, skottText].filter(Boolean).join(" + ");
 
-      // Samma teknik som i detaljtabellen: dela upp långa vapennamn OCH
-      // långa totalsummor (t.ex. "13½ askar + 43 skott") i så många rader
-      // som faktiskt behövs, och basera radhöjden på den bredaste kolumnen -
-      // annars kan text krocka med nästa rad eller rinna av sidan.
       const nameLines = doc.splitTextToSize(name, nameColWidth);
       const totalLines = totalText ? doc.splitTextToSize(totalText, totalColWidth) : [];
       const rowHeight = Math.max(nameLines.length, totalLines.length, 1) * summaryLineHeight;
@@ -1282,14 +1540,11 @@ function buildPdf(rows, from, to) {
     const [date, activity, weapon, amount, , note] = row;
     const cells = [date || "", activity || "", weapon || "", amount || "", note || ""];
 
-    // Dela upp varje kolumns text i så många rader som faktiskt behövs
-    // för att rymmas i kolumnbredden - detta är det jsPDF INTE gör åt
-    // dig automatiskt när du bara sätter maxWidth på doc.text().
     const splitCells = cells.map((text, idx) => doc.splitTextToSize(text, cols[idx].w));
     const rowLines = Math.max(...splitCells.map(lines => lines.length), 1);
     const rowHeight = rowLines * lineHeight;
 
-    // Kolla platsen INNAN vi ritar, annars kapas raden mitt itu vid sidbrytning
+    // Kolla platsen INNAN vi ritar, annars kapas raden vid sidbrytning
     if (y + rowHeight > 275) {
       doc.addPage();
       y = 20;
@@ -1303,7 +1558,7 @@ function buildPdf(rows, from, to) {
     doc.setLineWidth(0.15);
     doc.line(marginX, rowBottom + 1.5, pageWidth - marginX, rowBottom + 1.5);
 
-    y = rowBottom + 5; // radhöjd + luft till nästa rad
+    y = rowBottom + 5;
   });
 
   y += 6;
@@ -1321,14 +1576,16 @@ function buildPdf(rows, from, to) {
 
 // ---------- Submit ----------
 async function submitLog() {
+  if (!appReady) return showToast("Koppla ett kalkylark först.", true);
+
   const note = document.getElementById("noteInput").value;
   const dateVal = document.getElementById("dateInput").value;
   const logBtn = document.getElementById("logBtn");
   const locationInput = document.getElementById("locationInput");
   const location = locationInput.value.trim() || DEFAULT_LOCATION;
 
-  let rows = [];
-  let activity = "Träning";
+  const rows = [];
+  let activity;
 
   if (currentMode === "training" || currentMode === "competition") {
     activity = (currentMode === "competition") ? "Tävling" : "Träning";
@@ -1372,24 +1629,30 @@ async function submitLog() {
   logBtn.disabled = true;
   showToast("Loggar...", false);
 
+  // Själva skrivningen. Bara om DEN misslyckas köas passet - annars kunde
+  // ett lyckat pass hamna i kön och dubbleras vid nästa synk.
   try {
     await appendRows(rows);
-    await sortSheetByDateDesc();
-    showToast("Passet är loggat!", false);
-    trackEvent("pass-loggat");
-    resetForm();
-    loadRecent();
   } catch (e) {
     const isOffline = !navigator.onLine || e instanceof TypeError;
-    if (isOffline) {
+    if (isOffline || e.authExpired) {
       queueRows(rows);
-      showToast("Ingen uppkoppling - sparat, synkas automatiskt.", false);
+      showToast(isOffline
+        ? "Ingen uppkoppling - sparat, synkas automatiskt."
+        : "Sessionen gick ut - passet är sparat och synkas när du loggat in igen.", false);
       trackEvent("pass-loggat");
       resetForm();
     } else {
       showToast("Ett fel uppstod: " + e.message, true);
     }
-  } finally {
     logBtn.disabled = false;
+    return;
   }
+
+  try { await sortSheetByDateDesc(); } catch (e) { /* kosmetiskt - passet är sparat */ }
+  showToast("Passet är loggat!", false);
+  trackEvent("pass-loggat");
+  resetForm();
+  loadRecent();
+  logBtn.disabled = false;
 }
