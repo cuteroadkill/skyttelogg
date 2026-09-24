@@ -1,5 +1,7 @@
 {
+  "id": "./index.html",
   "name": "Skyttelogg",
+  "lang": "sv",
   "short_name": "Skyttelogg",
   "start_url": "./index.html",
   "scope": "./",
