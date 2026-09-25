@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#14161A">
+<meta name="theme-color" content="#0B0D11">
 <title>Skyttelogg</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -23,20 +23,6 @@
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"></span>
         <span class="brand-text">SKYTTELOGG</span>
-      </div>
-      <div class="topbar-actions hidden" id="topbarActions">
-        <button id="manageWeaponsBtn" class="icon-btn" title="Inställningar" aria-label="Inställningar">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
-        </button>
-        <button id="signOutBtn" class="icon-btn" title="Logga ut" aria-label="Logga ut">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
-            <line x1="12" y1="2" x2="12" y2="12"></line>
-          </svg>
-        </button>
       </div>
     </div>
   </header>
@@ -54,66 +40,177 @@
     </section>
 
     <!-- Appvy -->
-    <section id="appView" class="hidden">
+    <div id="appView" class="hidden">
 
-      <!-- Datum -->
-      <div class="field-group">
-        <label for="dateInput">Datum</label>
-        <div class="date-wrap">
-          <button type="button" id="dateDisplay" class="input mono date-display"></button>
-          <input type="date" id="dateInput" class="date-input-hidden" tabindex="-1" aria-hidden="true">
+      <!-- ===== Vy: Logga ===== -->
+      <section id="viewLog" class="view">
+
+        <h2 class="section-title">Nytt pass</h2>
+        <div class="card">
+          <div class="field-group">
+            <label for="dateInput">Datum</label>
+            <div class="date-wrap">
+              <button type="button" id="dateDisplay" class="input mono date-display"></button>
+              <input type="date" id="dateInput" class="date-input-hidden" tabindex="-1" aria-hidden="true">
+            </div>
+          </div>
+
+          <div class="mode-switch" role="tablist" aria-label="Typ av pass">
+            <button type="button" class="mode-btn active" data-mode="training" role="tab" aria-selected="true">Träning</button>
+            <button type="button" class="mode-btn" data-mode="competition" role="tab" aria-selected="false">Tävling</button>
+            <button type="button" class="mode-btn" data-mode="other" role="tab" aria-selected="false">Annat</button>
+          </div>
+
+          <!-- Annan aktivitet -->
+          <div id="otherActivityBlock" class="field-group field-group--last hidden">
+            <label for="activityTypeInput">Aktivitet</label>
+            <input type="text" id="activityTypeInput" class="input" placeholder="Vad gäller det? (t.ex. Funktionär, Städdag)">
+          </div>
         </div>
-      </div>
 
-      <!-- Lägesväxlare -->
-      <div class="mode-switch" role="tablist" aria-label="Typ av pass">
-        <button type="button" class="mode-btn active" data-mode="training" role="tab" aria-selected="true">Träning</button>
-        <button type="button" class="mode-btn" data-mode="competition" role="tab" aria-selected="false">Tävling</button>
-        <button type="button" class="mode-btn" data-mode="other" role="tab" aria-selected="false">Annat</button>
-      </div>
-
-      <div class="field-group">
-        <input type="text" id="noteInput" class="input" placeholder="Valfri notering">
-      </div>
-
-      <div class="field-group">
-        <label for="locationInput">Plats / Förening</label>
-        <input type="text" id="locationInput" class="input" placeholder="Skjutbana">
-      </div>
-
-      <!-- Annan aktivitet -->
-      <div id="otherActivityBlock" class="field-group hidden">
-        <input type="text" id="activityTypeInput" class="input" placeholder="Vad gäller det? (t.ex. Funktionär, Städdag)">
-      </div>
-
-      <!-- Vapenlista -->
-      <div id="weaponBlock">
-        <div class="unit-switch" role="tablist" aria-label="Mängdenhet">
-          <button type="button" class="unit-btn active" data-unit="ask">Askar</button>
-          <button type="button" class="unit-btn" data-unit="skott">Skott</button>
+        <!-- Vapenlista -->
+        <div id="weaponBlock">
+          <div class="section-row">
+            <h2 class="section-title">Vapen</h2>
+            <div class="unit-switch" role="tablist" aria-label="Mängdenhet">
+              <button type="button" class="unit-btn active" data-unit="ask">Askar</button>
+              <button type="button" class="unit-btn" data-unit="skott">Skott</button>
+            </div>
+          </div>
+          <div id="weaponList" class="weapon-grid" data-unit="ask"></div>
+          <p id="unitHint" class="hint muted">Mängd anges i askar per vapengrupp</p>
         </div>
-        <div id="weaponList" class="weapon-grid" data-unit="ask"></div>
-        <p class="hint muted">Mängd anges i askar per vapengrupp</p>
-      </div>
 
-      <div id="queueBadge" class="queue-badge hidden"></div>
-      <button id="logBtn" class="btn btn-primary btn-wide btn-sticky">Logga pass</button>
+        <h2 class="section-title">Detaljer</h2>
+        <div class="card">
+          <div class="field-group">
+            <label for="locationInput">Plats / Förening</label>
+            <input type="text" id="locationInput" class="input" placeholder="Skjutbana">
+          </div>
+          <div class="field-group field-group--last">
+            <label for="noteInput">Notering</label>
+            <input type="text" id="noteInput" class="input" placeholder="Valfri notering">
+          </div>
+        </div>
 
-      <!-- Senaste loggningar -->
-      <div class="recent-section">
-        <div class="recent-header">
-          <span class="muted">Senaste</span>
+        <div id="queueRow" class="queue-row hidden"></div>
+        <button id="logBtn" class="btn btn-primary btn-wide log-btn">Logga pass</button>
+
+        <!-- Senaste loggningar -->
+        <div class="section-row section-row--spaced">
+          <h2 class="section-title">Senaste</h2>
           <button id="refreshBtn" class="text-btn">Uppdatera</button>
         </div>
-        <div id="recentList" class="recent-list">
+        <div id="recentList" class="card-list">
           <p class="muted small">Laddar...</p>
         </div>
-      </div>
+      </section>
 
-      <a id="sheetLink" href="#" target="_blank" class="sheet-link">Öppna kalkylarket →</a>
-      <button id="exportPdfBtn" class="text-btn export-btn">Exportera till PDF</button>
+      <!-- ===== Vy: Kalender ===== -->
+      <section id="viewCalendar" class="view hidden">
+        <div class="card calendar-card">
+          <div class="cal-head">
+            <button type="button" id="calPrevBtn" class="round-btn" aria-label="Föregående månad">‹</button>
+            <span id="calMonthLabel" class="cal-month"></span>
+            <button type="button" id="calNextBtn" class="round-btn" aria-label="Nästa månad">›</button>
+          </div>
+          <div class="cal-grid cal-weekdays" aria-hidden="true">
+            <span>MÅN</span><span>TIS</span><span>ONS</span><span>TOR</span><span>FRE</span><span>LÖR</span><span>SÖN</span>
+          </div>
+          <div id="calGrid" class="cal-grid"></div>
+          <div class="cal-legend">
+            <span><span class="dot dot--training"></span>Träning</span>
+            <span><span class="dot dot--competition"></span>Tävling</span>
+            <span><span class="dot dot--other"></span>Annat</span>
+          </div>
+        </div>
 
-    </section>
+        <p id="calSummaryLabel" class="summary-label muted"></p>
+        <div class="summary-grid">
+          <div class="summary-box"><span id="calCountTraining" class="summary-num mono">–</span><span class="summary-cap">Träning</span></div>
+          <div class="summary-box"><span id="calCountCompetition" class="summary-num summary-num--accent mono">–</span><span class="summary-cap">Tävling</span></div>
+          <div class="summary-box"><span id="calCountOther" class="summary-num mono">–</span><span class="summary-cap">Annat</span></div>
+        </div>
+
+        <h2 id="calDayTitle" class="section-title section-title--spaced"></h2>
+        <div id="calDayList" class="card-list"></div>
+      </section>
+
+      <!-- ===== Vy: Meny ===== -->
+      <section id="viewMenu" class="view hidden">
+
+        <h2 class="section-title">Min logg</h2>
+        <div class="menu-group">
+          <button type="button" id="menuExportBtn" class="menu-row">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="14 3 14 9 20 9"></polyline><line x1="12" y1="12" x2="12" y2="18"></line><polyline points="9 15 12 18 15 15"></polyline></svg>
+            <span class="menu-label">Exportera till PDF</span>
+            <span class="menu-chev" aria-hidden="true">›</span>
+          </button>
+          <a id="menuSheetLink" href="#" target="_blank" rel="noopener" class="menu-row">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="9" x2="9" y2="21"></line></svg>
+            <span class="menu-label">Öppna kalkylarket</span>
+            <span class="menu-chev menu-chev--ext" aria-hidden="true">↗</span>
+          </a>
+        </div>
+
+        <h2 class="section-title section-title--spaced">Inställningar</h2>
+        <div class="menu-group">
+          <button type="button" id="menuWeaponsBtn" class="menu-row">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2"></circle><line x1="12" y1="2" x2="12" y2="5"></line><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+            <span class="menu-label">Vapen</span>
+            <span id="menuWeaponsCount" class="menu-meta"></span>
+            <span class="menu-chev" aria-hidden="true">›</span>
+          </button>
+          <button type="button" id="menuThemeBtn" class="menu-row">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 3a9 9 0 0 0 0 18z" class="menu-icon-fill"></path></svg>
+            <span class="menu-label">Tema</span>
+            <span class="menu-swatch" aria-hidden="true"></span>
+            <span class="menu-chev" aria-hidden="true">›</span>
+          </button>
+          <button type="button" id="menuSheetBtn" class="menu-row">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path></svg>
+            <span class="menu-label menu-label--stack">
+              <span>Ark</span>
+              <span id="menuSheetSub" class="menu-sub"></span>
+            </span>
+            <span class="menu-chev" aria-hidden="true">›</span>
+          </button>
+        </div>
+
+        <h2 class="section-title section-title--spaced">Om appen</h2>
+        <div class="menu-group">
+          <a id="menuIssuesLink" href="#" target="_blank" rel="noopener" class="menu-row hidden">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            <span class="menu-label">Rapportera bugg eller idé</span>
+            <span class="menu-chev menu-chev--ext" aria-hidden="true">↗</span>
+          </a>
+          <button type="button" id="menuCoffeeBtn" class="menu-row">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 8h1a4 4 0 0 1 0 8h-1"></path><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"></path><line x1="7" y1="2" x2="7" y2="4"></line><line x1="11" y1="2" x2="11" y2="4"></line></svg>
+            <span class="menu-label">Bjud på en kaffe</span>
+            <span class="menu-chev" aria-hidden="true">›</span>
+          </button>
+          <a href="privacy.html" class="menu-row">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <span class="menu-label">Integritetspolicy</span>
+            <span class="menu-chev" aria-hidden="true">›</span>
+          </a>
+        </div>
+
+        <div class="menu-group menu-group--spaced">
+          <button type="button" id="menuSignOutBtn" class="menu-row menu-row--danger">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+            <span class="menu-label">Logga ut</span>
+          </button>
+        </div>
+
+        <p class="menu-footer muted small">
+          Skyttelogg — byggd av
+          <a href="https://github.com/cuteroadkill" target="_blank" rel="noopener">cuteroadkill</a>
+          ·
+          <a href="https://github.com/cuteroadkill/skyttelogg" target="_blank" rel="noopener">källkod</a>
+        </p>
+      </section>
+    </div>
 
     <!-- Redigera pass -->
     <div id="editOverlay" class="overlay hidden">
@@ -183,16 +280,11 @@
       </div>
     </div>
 
-    <!-- Inställningar (tema + vapen) -->
+    <!-- Vapen -->
     <div id="weaponsOverlay" class="overlay hidden">
       <div class="overlay-panel">
-        <h2>Inställningar</h2>
-
-        <h3 class="settings-subhead">Tema</h3>
-        <div id="themeSwatches" class="theme-swatches"></div>
-
-        <h3 class="settings-subhead">Vapen</h3>
-        <p class="muted small" style="margin: -6px 0 16px;">Dessa syns som val när du loggar ett pass.</p>
+        <h2>Vapen</h2>
+        <p class="muted small sheet-intro">Dessa syns som val när du loggar ett pass. Stjärnmärkta hamnar överst.</p>
 
         <div id="weaponsManageList" class="weapons-manage-list"></div>
 
@@ -201,35 +293,52 @@
           <button id="addWeaponBtn" class="btn btn-primary add-weapon-btn">Lägg till</button>
         </div>
 
-        <h3 class="settings-subhead">Ark</h3>
-        <p class="muted small" style="margin: -6px 0 12px;">
-          Byter du telefon behöver du peka om till ditt befintliga ark en
-          gång — välj det i listan nedan, snabbast och säkrast.
-        </p>
-        <button id="pickerBtn" class="btn btn-primary btn-wide" style="margin-bottom:10px;">📁 Välj i Google Drive</button>
-
-        <p class="muted small" style="margin: 4px 0 8px;">
-          Eller klistra in ID/länk manuellt — fungerar bara för ark appen redan
-          har åtkomst till (t.ex. ett den själv skapat, eller ett du tidigare
-          valt i Google Drive):
-        </p>
-        <div class="add-weapon-row">
-          <input type="text" id="reconnectSheetInput" class="input" placeholder="Kalkylarkets ID eller länk">
-          <button id="reconnectSheetBtn" class="btn btn-primary add-weapon-btn">Använd</button>
-        </div>
-
-        <a id="issuesLink" href="#" target="_blank" class="sheet-link hidden">🐛 Rapportera bugg eller idé</a>
-        <button type="button" id="coffeeBtn" class="sheet-link" style="background:none; border:none; width:100%; cursor:pointer;">☕ Bjud mig på en kaffe</button>
-
-        <p class="muted small" style="text-align:center; margin: -8px 0 12px;">
-          Skyttelogg — byggd av
-          <a href="https://github.com/cuteroadkill" target="_blank" style="color:var(--brass);">cuteroadkill</a>
-          ·
-          <a href="https://github.com/cuteroadkill/skyttelogg" target="_blank" style="color:var(--brass);">källkod</a>
-        </p>
-
         <div class="overlay-actions">
           <button id="weaponsCloseBtn" class="btn btn-secondary">Stäng</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tema -->
+    <div id="themeOverlay" class="overlay hidden">
+      <div class="overlay-panel">
+        <h2>Tema</h2>
+        <p class="muted small sheet-intro">Accentfärgen sparas på den här enheten.</p>
+        <div id="themeSwatches" class="theme-swatches"></div>
+        <div class="overlay-actions">
+          <button id="themeCloseBtn" class="btn btn-secondary">Stäng</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ark -->
+    <div id="sheetOverlay" class="overlay hidden">
+      <div class="overlay-panel">
+        <h2>Ark</h2>
+
+        <div id="sheetProblemBox" class="problem-box hidden">
+          Appen kommer inte åt arket just nu. Välj ditt ark igen via Google Drive nedan.
+        </div>
+
+        <div class="current-sheet">
+          <span class="current-sheet-label">Kopplad till</span>
+          <span id="currentSheetName" class="current-sheet-name">–</span>
+        </div>
+
+        <p class="muted small sheet-intro">Ny telefon eller webbläsare? Välj ditt befintliga ark så följer historiken med.</p>
+        <button type="button" id="sheetPickerBtn" class="btn btn-primary btn-wide">📁 Välj ark i Google Drive</button>
+
+        <details id="sheetManualDetails" class="manual-details">
+          <summary>Har du arkets länk istället?</summary>
+          <p class="muted small">Fungerar för ark som appen skapat, eller som du valt via Google Drive tidigare. Annars — använd knappen ovan.</p>
+          <div class="add-weapon-row">
+            <input type="text" id="reconnectSheetInput" class="input" placeholder="Länk eller ID">
+            <button type="button" id="reconnectSheetBtn" class="btn btn-secondary add-weapon-btn">Koppla</button>
+          </div>
+        </details>
+
+        <div class="overlay-actions">
+          <button id="sheetCloseBtn" class="btn btn-secondary">Stäng</button>
         </div>
       </div>
     </div>
@@ -238,16 +347,19 @@
     <div id="sheetSetupOverlay" class="overlay hidden">
       <div class="overlay-panel">
         <h2>Koppla ditt kalkylark</h2>
-        <p id="sheetSetupMsg" class="muted small" style="margin: -6px 0 18px; line-height:1.55;"></p>
+        <p id="sheetSetupMsg" class="muted small sheet-intro"></p>
 
         <button type="button" id="setupPickerBtn" class="btn btn-primary btn-wide setup-btn">📁 Välj befintligt i Google Drive</button>
         <button type="button" id="setupCreateBtn" class="btn btn-secondary btn-wide setup-btn">Skapa nytt ark</button>
 
-        <p class="muted small" style="margin: 14px 0 8px;">Har du arkets ID eller länk?</p>
-        <div class="add-weapon-row">
-          <input type="text" id="setupSheetInput" class="input" placeholder="Kalkylarkets ID eller länk">
-          <button type="button" id="setupSheetBtn" class="btn btn-primary add-weapon-btn">Använd</button>
-        </div>
+        <details id="setupManualDetails" class="manual-details">
+          <summary>Har du arkets länk istället?</summary>
+          <p class="muted small">Fungerar för ark som appen skapat, eller som du valt via Google Drive tidigare. Annars — använd knappen ovan.</p>
+          <div class="add-weapon-row">
+            <input type="text" id="setupSheetInput" class="input" placeholder="Länk eller ID">
+            <button type="button" id="setupSheetBtn" class="btn btn-secondary add-weapon-btn">Koppla</button>
+          </div>
+        </details>
 
         <div class="overlay-actions">
           <button type="button" id="setupSignOutBtn" class="btn btn-secondary">Logga ut</button>
@@ -259,7 +371,7 @@
     <div id="coffeeOverlay" class="overlay hidden">
       <div class="overlay-panel" style="text-align:center;">
         <h2>☕ Bjud mig på en kaffe</h2>
-        <p class="muted small" style="margin: -6px 0 20px;">
+        <p class="muted small sheet-intro">
           Appen är gratis att använda — men gillar du den, är en kaffe alltid uppskattat.
         </p>
 
@@ -278,6 +390,23 @@
     </div>
 
   </main>
+
+  <!-- Bottenmeny -->
+  <nav id="bottomNav" class="bottom-nav hidden" aria-label="Huvudmeny">
+    <button type="button" class="nav-btn active" data-view="log" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"></circle><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line></svg>
+      <span>Logga</span>
+    </button>
+    <button type="button" class="nav-btn" data-view="calendar">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="16" y1="3" x2="16" y2="7"></line></svg>
+      <span>Kalender</span>
+    </button>
+    <button type="button" class="nav-btn" data-view="menu">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="20" y2="17"></line></svg>
+      <span>Meny</span>
+      <span id="menuAlertDot" class="nav-alert hidden" aria-label="Något behöver åtgärdas"></span>
+    </button>
+  </nav>
 
   <!-- Anonym, aggregerad användningsräknare (GoatCounter) - inga cookies,
        inga personuppgifter, ingen koppling till ditt konto eller din data. -->
