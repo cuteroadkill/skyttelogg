@@ -1,6 +1,5 @@
-// Cachenamnet innehåller service workerns scope, så att en betaversion i
-// en undermapp (t.ex. /skyttelogg/beta/) och live-versionen inte rensar
-// varandras cacher när någon av dem uppdateras.
+// Cachenamnet innehåller scope, så att beta (/beta/) och live inte rensar
+// varandras cacher.
 const CACHE_PREFIX = "skyttelogg-shell-";
 const CACHE_VERSION = "v4";
 const SCOPE = self.registration.scope;
@@ -22,9 +21,8 @@ self.addEventListener("install", event => {
   self.skipWaiting();
 });
 
-// Rensar bara egna, äldre cacher: tidigare versioner för SAMMA scope, samt
-// gamla cachenamn utan scope (v1–v3, från före den här ändringen) - de
-// senare bara från rotversionen, aldrig från en undermapp.
+// Rensar äldre versioner för samma scope. Äldre cachenamn utan scope rensas
+// bara av rotversionen.
 self.addEventListener("activate", event => {
   const isRootScope = !/\/beta\/$/.test(SCOPE);
   event.waitUntil(
@@ -39,10 +37,8 @@ self.addEventListener("activate", event => {
   self.clients.claim();
 });
 
-// Nätverk först, cache bara som reserv om man är offline.
-// Skalet (HTML/CSS/JS) blir alltid färskt vid uppdatering - ingen
-// väntan på att webbläsaren ska "upptäcka" att något ändrats.
-// Google/Sheets API-anrop rörs aldrig - alltid nätverket.
+// Nätverk först, cache som reserv offline, så att uppdateringar slår igenom
+// direkt. Anrop till andra ursprung (Google-API:er m.m.) hanteras inte här.
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
@@ -51,8 +47,8 @@ self.addEventListener("fetch", event => {
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        // Cacha bara lyckade svar - annars kan t.ex. en 404 ersätta en
-        // fungerande fil i offline-reserven.
+        // Cacha bara lyckade svar, så att ett felsvar aldrig ersätter en
+        // fungerande fil.
         if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
