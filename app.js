@@ -5,7 +5,7 @@
 // =================================================================
 
 // Standardvapen som sätts upp första gången (i "Vapen"-fliken i arket).
-// Efter det är listan helt användarens egen - hanteras via kugghjulet.
+// Efter det är listan helt användarens egen - hanteras via Meny → Vapen.
 const DEFAULT_WEAPONS = [
   "Vapengrupp C (.22 LR)",
   "Vapengrupp A (9mm)",
@@ -17,11 +17,12 @@ let weaponsRowCount = 0; // antal rader i Vapen-fliken senast vi läste/skrev
 
 // Fyra kurerade teman + möjlighet att välja valfri egen färg.
 // Bakgrund/text/ytor rörs aldrig - bara accentfärgen (mässing som standard).
+// Vinröd är ljusad så att mörk text på accentknappar klarar 4,5:1.
 const THEMES = [
   { id: "brass",  name: "Mässing", hex: "#C4915E", dim: "#8A6740", rgb: "196, 145, 94" },
   { id: "steel",  name: "Stål",    hex: "#6B9BC3", dim: "#4A6D8C", rgb: "107, 155, 195" },
   { id: "forest", name: "Skog",    hex: "#7FA65C", dim: "#5A7A3F", rgb: "127, 166, 92" },
-  { id: "wine",   name: "Vinröd",  hex: "#B25A6B", dim: "#7D3E4A", rgb: "178, 90, 107" }
+  { id: "wine",   name: "Vinröd",  hex: "#C46E7F", dim: "#7A4550", rgb: "196, 110, 127" }
 ];
 
 // OBS: localStorage-nycklarna nedan heter fortfarande "msf_*" från tiden då
@@ -42,6 +43,10 @@ const HEADER_ROW = ["Datum", "Aktivitet", "Vapengrupp/Typ", "Antal skott", "Plat
 const JSPDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.0.0/jspdf.umd.min.js";
 const GAPI_URL = "https://apis.google.com/js/api.js";
 
+const MONTH_NAMES = ["januari", "februari", "mars", "april", "maj", "juni", "juli",
+  "augusti", "september", "oktober", "november", "december"];
+const WEEKDAY_NAMES = ["söndag", "måndag", "tisdag", "onsdag", "torsdag", "fredag", "lördag"];
+
 // ---------- Anonym användningsräkning (GoatCounter) ----------
 // Skickar aldrig persondata - bara "det här hände, en gång till". Om
 // skriptet är blockerat (annonsblockerare e.dyl.) eller inte hunnit ladda
@@ -58,11 +63,15 @@ let accessToken = null;
 let tokenExpiresAt = 0;
 let tokenClient = null;
 let spreadsheetId = null;      // från config.js, sparat på enheten, valt eller nyskapat
+let spreadsheetTitle = "";     // arkets filnamn, visas under Meny → Ark
 let sheetTitle = null;         // loggflikens namn, hämtas vid anslutning
 let sheetGridId = null;        // numeriskt sheetId, används för sortering/radering
 let weaponsSheetGridId = null; // numeriskt sheetId för "Vapen"-fliken
 let appReady = false;          // true när ett ark är anslutet och laddat
+let connecting = false;        // true medan connectSheet provar ett (nytt) ark
+let sheetProblem = false;      // true när det kopplade arket slutat svara (403/404)
 let currentMode = "training";
+let currentView = "log";
 
 // ---------- Små hjälpare ----------
 function isHexColor(s) {
@@ -117,6 +126,14 @@ function sameRow(a, b) {
   return JSON.stringify(norm(a)) === JSON.stringify(norm(b));
 }
 
+// Träning / Tävling / allt annat (även fritext efter redigering).
+function activityType(activity) {
+  const a = String(activity || "").trim();
+  if (a === "Träning") return "training";
+  if (a === "Tävling") return "competition";
+  return "other";
+}
+
 // Laddar ett externt skript en gång, vid behov (jsPDF, Google Picker).
 const scriptPromises = {};
 function loadScriptOnce(src) {
@@ -152,16 +169,18 @@ window.addEventListener("load", () => {
   window.addEventListener("online", trySyncQueue);
 
   if (CONFIG.ISSUES_URL) {
-    const link = document.getElementById("issuesLink");
+    const link = document.getElementById("menuIssuesLink");
     link.href = CONFIG.ISSUES_URL;
     link.classList.remove("hidden");
   }
 
   // Utan API-nyckel kan filväljaren inte öppnas - dölj knapparna istället
-  // för att visa något som bara ger fel.
+  // för att visa något som bara ger fel, och visa den manuella vägen direkt.
   if (!CONFIG.PICKER_API_KEY) {
-    document.getElementById("pickerBtn").classList.add("hidden");
+    document.getElementById("sheetPickerBtn").classList.add("hidden");
     document.getElementById("setupPickerBtn").classList.add("hidden");
+    document.getElementById("sheetManualDetails").open = true;
+    document.getElementById("setupManualDetails").open = true;
     const createBtn = document.getElementById("setupCreateBtn");
     createBtn.classList.remove("btn-secondary");
     createBtn.classList.add("btn-primary");
@@ -218,6 +237,13 @@ function wireDatePicker(inputId, displayId) {
   });
 }
 
+// Stänger ett overlay när man trycker på den mörka bakgrunden.
+function wireBackdropClose(overlayId, closeFn) {
+  document.getElementById(overlayId).addEventListener("click", e => {
+    if (e.target.id === overlayId) closeFn();
+  });
+}
+
 // ---------- Händelser ----------
 function wireStaticEvents() {
   document.getElementById("signInBtn").addEventListener("click", () => {
@@ -226,7 +252,6 @@ function wireStaticEvents() {
   document.getElementById("reauthBanner").addEventListener("click", () => {
     if (tokenClient) tokenClient.requestAccessToken({ prompt: "" });
   });
-  document.getElementById("signOutBtn").addEventListener("click", signOut);
   document.getElementById("logBtn").addEventListener("click", submitLog);
   document.getElementById("refreshBtn").addEventListener("click", loadRecent);
   document.querySelectorAll(".mode-btn").forEach(btn => {
@@ -236,49 +261,61 @@ function wireStaticEvents() {
     btn.addEventListener("click", () => setAmmoUnit(btn.dataset.unit));
   });
 
+  // Bottenmeny
+  document.querySelectorAll(".nav-btn").forEach(btn => {
+    btn.addEventListener("click", () => setView(btn.dataset.view));
+  });
+
+  // Kalender
+  document.getElementById("calPrevBtn").addEventListener("click", () => shiftCalendarMonth(-1));
+  document.getElementById("calNextBtn").addEventListener("click", () => shiftCalendarMonth(1));
+
   // Redigeringsoverlay
   document.getElementById("editCancelBtn").addEventListener("click", closeEditOverlay);
   document.getElementById("editSaveBtn").addEventListener("click", saveEditedRow);
   document.getElementById("editDeleteBtn").addEventListener("click", deleteEditedRow);
-  document.getElementById("editOverlay").addEventListener("click", e => {
-    if (e.target.id === "editOverlay") closeEditOverlay();
-  });
+  wireBackdropClose("editOverlay", closeEditOverlay);
 
-  // Exportoverlay
-  document.getElementById("exportPdfBtn").addEventListener("click", openExportOverlay);
+  // Meny → Min logg
+  document.getElementById("menuExportBtn").addEventListener("click", openExportOverlay);
   document.getElementById("exportCancelBtn").addEventListener("click", closeExportOverlay);
   document.getElementById("exportGenerateBtn").addEventListener("click", generatePdf);
-  document.getElementById("exportOverlay").addEventListener("click", e => {
-    if (e.target.id === "exportOverlay") closeExportOverlay();
-  });
+  wireBackdropClose("exportOverlay", closeExportOverlay);
 
-  // Inställningar / vapenhantering
-  document.getElementById("manageWeaponsBtn").addEventListener("click", openWeaponsOverlay);
+  // Meny → Vapen
+  document.getElementById("menuWeaponsBtn").addEventListener("click", openWeaponsOverlay);
   document.getElementById("weaponsCloseBtn").addEventListener("click", closeWeaponsOverlay);
   document.getElementById("addWeaponBtn").addEventListener("click", addWeapon);
-  document.getElementById("pickerBtn").addEventListener("click", openDrivePicker);
   document.getElementById("newWeaponInput").addEventListener("keydown", e => {
     if (e.key === "Enter") { e.preventDefault(); addWeapon(); }
   });
-  document.getElementById("weaponsOverlay").addEventListener("click", e => {
-    if (e.target.id === "weaponsOverlay") closeWeaponsOverlay();
-  });
+  wireBackdropClose("weaponsOverlay", closeWeaponsOverlay);
 
-  // Bjud mig på en kaffe
+  // Meny → Tema
+  document.getElementById("menuThemeBtn").addEventListener("click", openThemeOverlay);
+  document.getElementById("themeCloseBtn").addEventListener("click", closeThemeOverlay);
+  wireBackdropClose("themeOverlay", closeThemeOverlay);
+
+  // Meny → Ark
+  document.getElementById("menuSheetBtn").addEventListener("click", openSheetOverlay);
+  document.getElementById("sheetCloseBtn").addEventListener("click", closeSheetOverlay);
+  document.getElementById("sheetPickerBtn").addEventListener("click", openDrivePicker);
+  wireBackdropClose("sheetOverlay", closeSheetOverlay);
+  wireManualSheetInput("reconnectSheetInput", "reconnectSheetBtn", closeSheetOverlay);
+
+  // Meny → Om appen
   if (CONFIG.SWISH_PARTS && CONFIG.SWISH_PARTS.length > 0) {
-    document.getElementById("coffeeBtn").addEventListener("click", openCoffeeOverlay);
+    document.getElementById("menuCoffeeBtn").addEventListener("click", openCoffeeOverlay);
   } else {
-    document.getElementById("coffeeBtn").classList.add("hidden");
+    document.getElementById("menuCoffeeBtn").classList.add("hidden");
   }
   document.getElementById("coffeeCloseBtn").addEventListener("click", closeCoffeeOverlay);
   document.getElementById("swishPayBtn").addEventListener("click", openSwishApp);
   document.getElementById("copySwishBtn").addEventListener("click", copySwishNumber);
-  document.getElementById("coffeeOverlay").addEventListener("click", e => {
-    if (e.target.id === "coffeeOverlay") closeCoffeeOverlay();
-  });
+  wireBackdropClose("coffeeOverlay", closeCoffeeOverlay);
 
-  // Peka om till befintligt ark (Inställningar → Ark)
-  wireManualSheetInput("reconnectSheetInput", "reconnectSheetBtn", null);
+  // Meny → Logga ut (med bekräftelse)
+  document.getElementById("menuSignOutBtn").addEventListener("click", confirmSignOut);
 
   // Koppla ark (visas när enheten inte vet vilket ark som gäller)
   document.getElementById("setupPickerBtn").addEventListener("click", openDrivePicker);
@@ -310,6 +347,30 @@ function wireManualSheetInput(inputId, btnId, onSuccess) {
   });
 }
 
+// ---------- Vyer ----------
+function setView(view) {
+  currentView = view;
+  document.getElementById("viewLog").classList.toggle("hidden", view !== "log");
+  document.getElementById("viewCalendar").classList.toggle("hidden", view !== "calendar");
+  document.getElementById("viewMenu").classList.toggle("hidden", view !== "menu");
+  document.querySelectorAll(".nav-btn").forEach(btn => {
+    const active = btn.dataset.view === view;
+    btn.classList.toggle("active", active);
+    if (active) btn.setAttribute("aria-current", "page");
+    else btn.removeAttribute("aria-current");
+  });
+  window.scrollTo(0, 0);
+  if (view === "calendar") loadCalendar();
+  if (view === "menu") updateMenuMeta();
+}
+
+// Efter loggning, redigering, radering eller kösynk.
+function refreshData() {
+  calendarRows = null; // läses om när kalendern visas
+  loadRecent();
+  if (currentView === "calendar") loadCalendar();
+}
+
 // ---------- Inloggning / session ----------
 async function onTokenReceived(resp) {
   if (resp.error) {
@@ -322,13 +383,13 @@ async function onTokenReceived(resp) {
 
   document.getElementById("signedOutView").classList.add("hidden");
   document.getElementById("appView").classList.remove("hidden");
-  document.getElementById("topbarActions").classList.remove("hidden");
+  document.getElementById("bottomNav").classList.remove("hidden");
 
   // Förnyad session (efter "Sessionen gick ut") - allt är redan laddat,
   // skicka bara iväg det som köats under tiden.
   if (appReady) {
     await trySyncQueue();
-    loadRecent();
+    refreshData();
     return;
   }
 
@@ -391,6 +452,16 @@ function hideReauthBanner() {
   document.getElementById("reauthBanner").classList.add("hidden");
 }
 
+function confirmSignOut() {
+  const n = getQueue().length;
+  let msg = "Logga ut?";
+  if (n > 0) {
+    msg += `\n\n${n === 1 ? "1 pass väntar" : n + " pass väntar"} på synk. ` +
+      "De sparas och skickas när du loggar in igen.";
+  }
+  if (confirm(msg)) signOut();
+}
+
 function signOut() {
   if (accessToken) {
     google.accounts.oauth2.revoke(accessToken, () => {});
@@ -399,13 +470,29 @@ function signOut() {
   tokenExpiresAt = 0;
   appReady = false;
   spreadsheetId = null;
-  recentRowsCache = {};
+  spreadsheetTitle = "";
+  rowCache = {};
+  calendarRows = null;
+  setSheetProblem(false);
   hideReauthBanner();
   closeSheetSetup();
   document.querySelectorAll(".overlay").forEach(o => o.classList.add("hidden"));
+  setView("log");
   document.getElementById("appView").classList.add("hidden");
-  document.getElementById("topbarActions").classList.add("hidden");
+  document.getElementById("bottomNav").classList.add("hidden");
   document.getElementById("signedOutView").classList.remove("hidden");
+}
+
+// ---------- Ark-problem (indikator) ----------
+// Tänds när det kopplade arket svarar 403/404 mitt i en session - t.ex.
+// om det raderats eller åtkomsten återkallats. Släcks när ett ark kopplats
+// (om) utan fel.
+function setSheetProblem(on) {
+  sheetProblem = on;
+  document.getElementById("menuAlertDot").classList.toggle("hidden", !on);
+  document.getElementById("sheetProblemBox").classList.toggle("hidden", !on);
+  document.getElementById("menuSheetBtn").classList.toggle("has-problem", on);
+  updateMenuMeta();
 }
 
 // ---------- Koppla ark ----------
@@ -415,21 +502,27 @@ function signOut() {
 async function connectSheet(id) {
   const previousId = spreadsheetId;
   spreadsheetId = id;
+  connecting = true;
   try {
     await loadSheetMeta(); // verifierar samtidigt att ID:t är giltigt och nåbart
   } catch (e) {
     spreadsheetId = previousId;
     throw e;
+  } finally {
+    connecting = false;
   }
   await ensureWeaponsSheet();
   await loadWeapons();
   buildWeaponList();
   if (!CONFIG.SPREADSHEET_ID) localStorage.setItem(LOCAL_SHEET_KEY, spreadsheetId);
-  document.getElementById("sheetLink").href =
+  document.getElementById("menuSheetLink").href =
     `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
   appReady = true;
+  rowCache = {};
+  calendarRows = null;
+  setSheetProblem(false);
   await trySyncQueue();
-  loadRecent();
+  refreshData();
 }
 
 async function reconnectSheet(idOrUrl) {
@@ -567,6 +660,7 @@ async function pickerCallback(data) {
   try {
     await reconnectSheet(fileId);
     closeSheetSetup();
+    closeSheetOverlay();
     showToast("Nu pekar appen på det arket!", false);
   } catch (e) {
     showToast(sheetErrorText(e), true);
@@ -593,6 +687,12 @@ async function sheetsFetch(path, options = {}) {
     const body = await res.json().catch(() => ({}));
     const err = new Error((body.error && body.error.message) || `HTTP ${res.status}`);
     err.status = res.status;
+    // Det redan kopplade arket svarar inte längre -> tänd indikatorn.
+    // (Inte när vi just provar ett nytt ark - då hanteras felet där.)
+    if (appReady && !connecting && spreadsheetId && path.startsWith(spreadsheetId) &&
+        isSheetUnreachable(err)) {
+      setSheetProblem(true);
+    }
     throw err;
   }
   return res.json();
@@ -609,7 +709,8 @@ async function readLogRows(range) {
 }
 
 async function loadSheetMeta() {
-  const data = await sheetsFetch(`${spreadsheetId}?fields=sheets.properties`);
+  const data = await sheetsFetch(`${spreadsheetId}?fields=properties.title,sheets.properties`);
+  spreadsheetTitle = (data.properties && data.properties.title) || "";
   const all = data.sheets.map(s => s.properties);
   const logSheet =
     all.find(s => s.title === LOG_TAB_NAME) ||
@@ -681,9 +782,13 @@ function saveWeapons(list) {
   return p;
 }
 
-// ---------- Senaste pass ----------
-let recentRowsCache = {}; // radnummer (1-indexerat i arket) -> normaliserad rad
+// ---------- Radcache (för redigering) ----------
+// radnummer (1-indexerat i arket) -> normaliserad rad, så som den såg ut när
+// den senast lästes. Fylls av både Senaste och Kalendern. assertRowUnchanged
+// jämför mot arket innan något skrivs, så en inaktuell post är ofarlig.
+let rowCache = {};
 
+// ---------- Senaste pass ----------
 async function loadRecent() {
   if (!appReady) return;
   const list = document.getElementById("recentList");
@@ -692,12 +797,11 @@ async function loadRecent() {
     // Arket sorteras nyast-först vid varje loggning (se sortSheetByDateDesc),
     // så rad 2–9 är de åtta senaste.
     const rows = await readLogRows("A2:F9");
-    recentRowsCache = {};
     const cards = [];
     rows.forEach((row, i) => {
       if (row.every(c => !c.trim())) return; // hoppa över tomma rader
       const rowNumber = i + 2;
-      recentRowsCache[rowNumber] = row;
+      rowCache[rowNumber] = row;
       cards.push(rowToCard(row, rowNumber));
     });
     if (cards.length === 0) {
@@ -705,26 +809,30 @@ async function loadRecent() {
       return;
     }
     list.innerHTML = cards.join("");
-    list.querySelectorAll(".recent-item").forEach(el => {
-      el.addEventListener("click", () => openEditOverlay(parseInt(el.dataset.row, 10)));
-    });
+    wireCardClicks(list);
   } catch (e) {
     list.innerHTML = `<p class="muted small">Kunde inte hämta: ${escapeHtml(e.message)}</p>`;
   }
+}
+
+function wireCardClicks(container) {
+  container.querySelectorAll(".recent-item").forEach(el => {
+    el.addEventListener("click", () => openEditOverlay(parseInt(el.dataset.row, 10)));
+  });
 }
 
 function rowToCard(row, rowNumber) {
   const [date, activity, weapon, amount, , note] = row;
   const line2 = [weapon, amount].filter(Boolean).join(" · ");
   return `
-    <div class="recent-item" data-row="${rowNumber}">
-      <div class="recent-date mono">${escapeHtml(date || "")}</div>
-      <div class="recent-body">
-        <div class="recent-activity">${escapeHtml(activity || "")}</div>
-        ${line2 ? `<div class="recent-detail muted">${escapeHtml(line2)}</div>` : ""}
-        ${note ? `<div class="recent-note muted">${escapeHtml(note)}</div>` : ""}
-      </div>
-    </div>`;
+    <button type="button" class="recent-item" data-row="${rowNumber}">
+      <span class="recent-date mono">${escapeHtml(date || "")}</span>
+      <span class="recent-body">
+        <span class="recent-activity" style="display:block">${escapeHtml(activity || "")}</span>
+        ${line2 ? `<span class="recent-detail muted" style="display:block">${escapeHtml(line2)}</span>` : ""}
+        ${note ? `<span class="recent-note muted" style="display:block">${escapeHtml(note)}</span>` : ""}
+      </span>
+    </button>`;
 }
 
 function escapeHtml(s) {
@@ -733,6 +841,148 @@ function escapeHtml(s) {
   }[m]));
 }
 
+// ---------- Kalender ----------
+let calendarRows = null;     // [{ row, rowNumber }] - null = inte läst än
+let calendarLoading = null;  // pågående läsning, så flera klick inte dubblerar
+let calMonth = null;         // Date, första dagen i visad månad
+let calSelected = null;      // ISO-datum för vald dag
+
+function ensureCalendarState() {
+  if (!calSelected) calSelected = todayLocalStr();
+  if (!calMonth) {
+    const [y, m] = calSelected.split("-").map(Number);
+    calMonth = new Date(y, m - 1, 1);
+  }
+}
+
+async function loadCalendar() {
+  if (!appReady) return;
+  ensureCalendarState();
+  renderCalendar(); // rita direkt (tomt eller med tidigare data)
+  if (calendarRows) return;
+
+  if (!calendarLoading) {
+    document.getElementById("calDayList").innerHTML = `<p class="muted small">Laddar...</p>`;
+    calendarLoading = (async () => {
+      try {
+        const rows = await readLogRows("A2:F");
+        const parsed = [];
+        rows.forEach((row, i) => {
+          if (!row[0] || row.every(c => !c.trim())) return;
+          const rowNumber = i + 2;
+          rowCache[rowNumber] = row;
+          parsed.push({ row, rowNumber });
+        });
+        calendarRows = parsed;
+      } catch (e) {
+        document.getElementById("calDayList").innerHTML =
+          `<p class="muted small">Kunde inte hämta: ${escapeHtml(e.message)}</p>`;
+        throw e;
+      } finally {
+        calendarLoading = null;
+      }
+    })();
+  }
+  try {
+    await calendarLoading;
+    renderCalendar();
+  } catch (e) { /* redan visat */ }
+}
+
+function shiftCalendarMonth(delta) {
+  ensureCalendarState();
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + delta, 1);
+  renderCalendar();
+}
+
+function selectCalendarDay(iso) {
+  calSelected = iso;
+  const [y, m] = iso.split("-").map(Number);
+  if (y !== calMonth.getFullYear() || m - 1 !== calMonth.getMonth()) {
+    calMonth = new Date(y, m - 1, 1);
+  }
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const year = calMonth.getFullYear();
+  const month = calMonth.getMonth();
+  const today = todayLocalStr();
+  document.getElementById("calMonthLabel").textContent =
+    MONTH_NAMES[month].charAt(0).toUpperCase() + MONTH_NAMES[month].slice(1) + " " + year;
+
+  // Typer per datum (unika, i ordningen träning, tävling, annat)
+  const typesByDate = {};
+  (calendarRows || []).forEach(({ row }) => {
+    const d = row[0];
+    if (!typesByDate[d]) typesByDate[d] = new Set();
+    typesByDate[d].add(activityType(row[1]));
+  });
+  const ORDER = ["training", "competition", "other"];
+  const LABEL = { training: "träning", competition: "tävling", other: "annat" };
+
+  // Rutnät: måndag först, 6 veckor om det behövs
+  const first = new Date(year, month, 1);
+  const offset = (first.getDay() + 6) % 7;
+  const start = new Date(year, month, 1 - offset);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = Math.ceil((offset + daysInMonth) / 7) * 7;
+
+  let html = "";
+  for (let i = 0; i < cells; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const iso = localIsoDate(d);
+    const types = typesByDate[iso] ? ORDER.filter(t => typesByDate[iso].has(t)) : [];
+    const cls = ["cal-day"];
+    if (d.getMonth() !== month) cls.push("cal-day--outside");
+    if (iso === calSelected) cls.push("cal-day--selected");
+    if (iso === today) cls.push("cal-day--today");
+    const label = `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}` +
+      (types.length ? ", " + types.map(t => LABEL[t]).join(" och ") : "");
+    html += `
+      <button type="button" class="${cls.join(" ")}" data-date="${iso}" aria-label="${label}"${iso === calSelected ? ' aria-pressed="true"' : ""}>
+        <span class="cal-num">${d.getDate()}</span>
+        <span class="cal-dots">${types.map(t => `<span class="dot dot--${t}"></span>`).join("")}</span>
+      </button>`;
+  }
+  const grid = document.getElementById("calGrid");
+  grid.innerHTML = html;
+  grid.querySelectorAll(".cal-day").forEach(btn => {
+    btn.addEventListener("click", () => selectCalendarDay(btn.dataset.date));
+  });
+
+  // Summering: antal DAGAR per typ i visad månad
+  const prefix = `${year}-${String(month + 1).padStart(2, "0")}-`;
+  const counts = { training: 0, competition: 0, other: 0 };
+  Object.keys(typesByDate).forEach(iso => {
+    if (!iso.startsWith(prefix)) return;
+    typesByDate[iso].forEach(t => { counts[t]++; });
+  });
+  const loaded = calendarRows !== null;
+  document.getElementById("calSummaryLabel").textContent = `Dagar i ${MONTH_NAMES[month]}`;
+  document.getElementById("calCountTraining").textContent = loaded ? counts.training : "–";
+  document.getElementById("calCountCompetition").textContent = loaded ? counts.competition : "–";
+  document.getElementById("calCountOther").textContent = loaded ? counts.other : "–";
+
+  // Vald dag
+  const [sy, sm, sd] = calSelected.split("-").map(Number);
+  const selDate = new Date(sy, sm - 1, sd);
+  const wd = WEEKDAY_NAMES[selDate.getDay()];
+  document.getElementById("calDayTitle").textContent =
+    `${wd.charAt(0).toUpperCase() + wd.slice(1)} ${sd} ${MONTH_NAMES[sm - 1]}`;
+
+  if (!loaded) return; // "Laddar..." eller felmeddelande står kvar
+  const list = document.getElementById("calDayList");
+  const dayRows = calendarRows.filter(r => r.row[0] === calSelected);
+  if (dayRows.length === 0) {
+    list.innerHTML = `<p class="muted small">Inga pass den här dagen.</p>`;
+    return;
+  }
+  list.innerHTML = dayRows.map(r => rowToCard(r.row, r.rowNumber)).join("");
+  wireCardClicks(list);
+}
+
+// ---------- Skriva ----------
 async function appendRows(rows) {
   await sheetsFetch(
     `${spreadsheetId}/values/${a1(sheetTitle, "A:F")}:append?valueInputOption=USER_ENTERED`,
@@ -774,16 +1024,16 @@ function setQueue(queue) {
 }
 
 function updateQueueBadge() {
-  const badge = document.getElementById("queueBadge");
+  const row = document.getElementById("queueRow");
   const n = getQueue().length;
   if (n === 0) {
-    badge.classList.add("hidden");
+    row.classList.add("hidden");
     return;
   }
-  badge.textContent = n === 1
+  row.textContent = n === 1
     ? "1 pass väntar på synk"
     : `${n} pass väntar på synk`;
-  badge.classList.remove("hidden");
+  row.classList.remove("hidden");
 }
 
 function queueRows(rows) {
@@ -819,7 +1069,7 @@ async function trySyncQueue() {
   if (syncedAny) {
     try { await sortSheetByDateDesc(); } catch (e) { /* kosmetiskt */ }
     showToast("Köade pass synkade!", false);
-    loadRecent();
+    refreshData();
   }
 }
 
@@ -836,7 +1086,7 @@ function buildWeaponList() {
   chip.dataset.weapon = "";
   chip.innerHTML = `
     <input type="checkbox" class="chip-input">
-    <input type="text" class="input custom-name" placeholder="Annat vapen...">
+    <input type="text" class="input custom-name" placeholder="+ Annat vapen...">
     <span class="chip-stepper">
       <button type="button" class="step-btn" data-delta="-0.5">−</button>
       <span class="amount mono" data-val="1">1</span>
@@ -901,6 +1151,8 @@ function loadSavedTheme() {
   if (saved.id === "custom" && isHexColor(saved.hex)) {
     applyThemeColors(saved.hex, darkenHex(saved.hex, 0.62), hexToRgbTriple(saved.hex), "custom");
   } else {
+    // Förinställda teman läses alltid från THEMES, så justerade färger
+    // (t.ex. Vinröd) slår igenom även för den som valt temat tidigare.
     const t = THEMES.find(t => t.id === saved.id);
     if (t) applyThemeColors(t.hex, t.dim, t.rgb, t.id);
   }
@@ -936,6 +1188,37 @@ function updateActiveSwatch() {
   });
   const customSwatch = document.querySelector(".theme-swatch--custom");
   if (customSwatch) customSwatch.classList.toggle("active", currentThemeId === "custom");
+}
+
+function openThemeOverlay() {
+  renderThemeSwatches();
+  document.getElementById("themeOverlay").classList.remove("hidden");
+}
+function closeThemeOverlay() {
+  document.getElementById("themeOverlay").classList.add("hidden");
+}
+
+// ---------- Meny ----------
+function updateMenuMeta() {
+  const n = weaponsList.length;
+  document.getElementById("menuWeaponsCount").textContent = n ? `${n} st` : "";
+  document.getElementById("menuSheetSub").textContent = sheetProblem
+    ? "Appen kommer inte åt arket — tryck för att koppla om"
+    : (spreadsheetTitle ? `Kopplad: ${spreadsheetTitle}` : "");
+}
+
+// ---------- Meny → Ark ----------
+// Namnet räcker inte - alla nya ark heter "Skyttelogg". De sista tecknen i
+// ID:t gör det möjligt att jämföra med adressraden i Google Sheets.
+function openSheetOverlay() {
+  const shortId = spreadsheetId ? ` · …${spreadsheetId.slice(-4)}` : "";
+  document.getElementById("currentSheetName").textContent =
+    spreadsheetTitle ? spreadsheetTitle + shortId : "–";
+  document.getElementById("sheetOverlay").classList.remove("hidden");
+}
+function closeSheetOverlay() {
+  document.getElementById("sheetOverlay").classList.add("hidden");
+  document.getElementById("reconnectSheetInput").value = "";
 }
 
 // ---------- Bjud mig på en kaffe (Swish) ----------
@@ -978,9 +1261,8 @@ async function copySwishNumber() {
   }
 }
 
-// ---------- Inställningar (overlay) ----------
+// ---------- Meny → Vapen ----------
 function openWeaponsOverlay() {
-  renderThemeSwatches();
   renderWeaponsManageList();
   document.getElementById("weaponsOverlay").classList.remove("hidden");
 }
@@ -1083,6 +1365,7 @@ function wireDragHandle(row) {
 async function persistAndRefreshWeapons() {
   renderWeaponsManageList();
   buildWeaponList();
+  updateMenuMeta();
   try {
     await saveWeapons(weaponsList);
   } catch (e) {
@@ -1178,7 +1461,7 @@ function setAmmoUnit(unit) {
   document.querySelectorAll(".unit-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.unit === unit);
   });
-  document.querySelector(".hint").textContent = unit === "ask"
+  document.getElementById("unitHint").textContent = unit === "ask"
     ? "Mängd anges i askar per vapengrupp"
     : "Mängd anges i exakt antal skott per vapengrupp";
 }
@@ -1231,7 +1514,7 @@ function resetForm() {
 let editingRow = null;
 
 function openEditOverlay(rowNumber) {
-  const row = recentRowsCache[rowNumber];
+  const row = rowCache[rowNumber];
   if (!row) return;
   editingRow = rowNumber;
   const [date, activity, weapon, amount, location, note] = row;
@@ -1256,7 +1539,7 @@ function closeEditOverlay() {
 // skriver över eller raderar den.
 async function assertRowUnchanged(rowNumber) {
   const [current] = await readLogRows(`A${rowNumber}:F${rowNumber}`);
-  const cached = recentRowsCache[rowNumber];
+  const cached = rowCache[rowNumber];
   if (!current || !cached || !sameRow(current, cached)) {
     const err = new Error("Arket har ändrats sedan listan laddades. Listan är uppdaterad — öppna passet igen.");
     err.rowChanged = true;
@@ -1268,7 +1551,8 @@ function handleEditError(e) {
   showToast(e.rowChanged ? e.message : "Ett fel uppstod: " + e.message, true);
   if (e.rowChanged) {
     closeEditOverlay();
-    loadRecent();
+    calendarRows = null;
+    refreshData();
   }
 }
 
@@ -1302,7 +1586,9 @@ async function saveEditedRow() {
   try { await sortSheetByDateDesc(); } catch (e) { /* kosmetiskt */ }
   showToast("Passet uppdaterat!", false);
   closeEditOverlay();
-  loadRecent();
+  calendarRows = null;
+  rowCache = {};
+  refreshData();
   btn.disabled = false;
 }
 
@@ -1326,7 +1612,9 @@ async function deleteEditedRow() {
     });
     showToast("Passet raderat.", false);
     closeEditOverlay();
-    loadRecent();
+    calendarRows = null;
+    rowCache = {};
+    refreshData();
   } catch (e) {
     handleEditError(e);
   } finally {
@@ -1642,6 +1930,8 @@ async function submitLog() {
         : "Sessionen gick ut - passet är sparat och synkas när du loggat in igen.", false);
       trackEvent("pass-loggat");
       resetForm();
+    } else if (isSheetUnreachable(e)) {
+      showToast("Appen kommer inte åt arket — se Meny → Ark. Passet är inte sparat.", true);
     } else {
       showToast("Ett fel uppstod: " + e.message, true);
     }
@@ -1653,6 +1943,6 @@ async function submitLog() {
   showToast("Passet är loggat!", false);
   trackEvent("pass-loggat");
   resetForm();
-  loadRecent();
+  refreshData();
   logBtn.disabled = false;
 }
