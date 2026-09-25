@@ -1,4 +1,10 @@
-const CACHE_NAME = "skyttelogg-shell-v3";
+// Cachenamnet innehåller service workerns scope, så att en betaversion i
+// en undermapp (t.ex. /skyttelogg/beta/) och live-versionen inte rensar
+// varandras cacher när någon av dem uppdateras.
+const CACHE_PREFIX = "skyttelogg-shell-";
+const CACHE_VERSION = "v4";
+const SCOPE = self.registration.scope;
+const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}|${SCOPE}`;
 const SHELL_FILES = [
   "./index.html",
   "./style.css",
@@ -16,10 +22,18 @@ self.addEventListener("install", event => {
   self.skipWaiting();
 });
 
+// Rensar bara egna, äldre cacher: tidigare versioner för SAMMA scope, samt
+// gamla cachenamn utan scope (v1–v3, från före den här ändringen) - de
+// senare bara från rotversionen, aldrig från en undermapp.
 self.addEventListener("activate", event => {
+  const isRootScope = !/\/beta\/$/.test(SCOPE);
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => {
+        if (!k.startsWith(CACHE_PREFIX) || k === CACHE_NAME) return false;
+        if (k.includes("|")) return k.endsWith("|" + SCOPE);
+        return isRootScope;
+      }).map(k => caches.delete(k)))
     )
   );
   self.clients.claim();
