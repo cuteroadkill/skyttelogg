@@ -3,6 +3,15 @@ description: "Något i appen fungerar inte som det ska"
 title: "[Bugg]: "
 labels: ["bug"]
 body:
+  - type: input
+    id: version
+    attributes:
+      label: Vilken version?
+      description: Står längst ned under Meny i appen, t.ex. "26.9.1 · beta".
+      placeholder: 26.9.1 · beta
+    validations:
+      required: true
+
   - type: dropdown
     id: device
     attributes:
