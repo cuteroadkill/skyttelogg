@@ -6,6 +6,13 @@ fått, från första versionen till idag.
 
 ---
 
+## 26.9.3 · september 2026
+
+- 🔓 **Förblir inloggad i upp till en timme** – öppna appen igen utan att
+  logga in.
+- ✨ **Ny startsida** med en kort animation medan dina pass hämtas.
+- 👉 Efter en timme räcker ett tryck på **Fortsätt**.
+
 ## 26.9.2 · september 2026
 
 - 🐛 **Rapportera bugg** och 💡 **Föreslå en idé** direkt från Meny – appens
