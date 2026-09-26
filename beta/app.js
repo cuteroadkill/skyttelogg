@@ -4,8 +4,8 @@
 // + Google Picker (välja befintligt ark, krävs med drive.file-scopet)
 // =================================================================
 
-// Standardvapen som sätts upp första gången (i "Vapen"-fliken i arket).
-// Efter det är listan helt användarens egen - hanteras via Meny → Vapen.
+// Standardvapen när fliken "Vapen" skapas. Därefter hanteras listan under
+// Meny → Vapen.
 const DEFAULT_WEAPONS = [
   "Vapengrupp C (.22 LR)",
   "Vapengrupp A (9mm)",
@@ -15,9 +15,9 @@ const DEFAULT_WEAPONS = [
 let weaponsList = [];
 let weaponsRowCount = 0; // antal rader i Vapen-fliken senast vi läste/skrev
 
-// Fyra kurerade teman + möjlighet att välja valfri egen färg.
-// Bakgrund/text/ytor rörs aldrig - bara accentfärgen (mässing som standard).
-// Vinröd är ljusad så att mörk text på accentknappar klarar 4,5:1.
+// Förinställda accentfärger, plus valfri egen färg. Temat påverkar bara
+// accenten, aldrig bakgrund, ytor eller text. Mörk text på accentfärgen ska
+// klara kontrastkravet 4,5:1.
 const THEMES = [
   { id: "brass",  name: "Mässing", hex: "#C4915E", dim: "#8A6740", rgb: "196, 145, 94" },
   { id: "steel",  name: "Stål",    hex: "#6B9BC3", dim: "#4A6D8C", rgb: "107, 155, 195" },
@@ -25,9 +25,8 @@ const THEMES = [
   { id: "wine",   name: "Vinröd",  hex: "#C46E7F", dim: "#7A4550", rgb: "196, 110, 127" }
 ];
 
-// OBS: localStorage-nycklarna nedan heter fortfarande "msf_*" från tiden då
-// appen hette MSF Skyttelogg. Byt INTE namn på dem - då tappar alla befintliga
-// installationer sitt sparade ark, sitt tema och eventuella köade pass.
+// Prefixet msf_ är kvar från appens tidigare namn. Nycklarna får inte döpas
+// om: befintliga installationer skulle då tappa sitt ark, tema och sin kö.
 const THEME_KEY = "msf_theme";
 const LOCAL_SHEET_KEY = "msf_spreadsheet_id";
 const QUEUE_KEY = "msf_pending_queue";
@@ -39,6 +38,9 @@ const DEFAULT_LOCATION = "Skjutbana";
 const SPREADSHEET_FILE_NAME = "Skyttelogg";
 const LOG_TAB_NAME = "Loggbok";
 const WEAPONS_TAB_NAME = "Vapen";
+const STATS_TAB_NAME = "Statistik";
+const DEFAULT_BOX_SIZE = 50;     // skott per ask när inget annat angetts
+const MAX_BOX_SIZE = 1000;
 const HEADER_ROW = ["Datum", "Aktivitet", "Vapengrupp/Typ", "Antal skott", "Plats/Förening", "Notering"];
 const JSPDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.0.0/jspdf.umd.min.js";
 const GAPI_URL = "https://apis.google.com/js/api.js";
@@ -47,16 +49,15 @@ const MONTH_NAMES = ["januari", "februari", "mars", "april", "maj", "juni", "jul
   "augusti", "september", "oktober", "november", "december"];
 const WEEKDAY_NAMES = ["söndag", "måndag", "tisdag", "onsdag", "torsdag", "fredag", "lördag"];
 
-// ---------- Anonym användningsräkning (GoatCounter) ----------
-// Skickar aldrig persondata - bara "det här hände, en gång till". Om
-// skriptet är blockerat (annonsblockerare e.dyl.) eller inte hunnit ladda
-// än gör funktionen ingenting, kraschar aldrig resten av appen.
+// ---------- Anonym händelseräkning (GoatCounter) ----------
+// Skickar bara händelsens namn, aldrig persondata. Är skriptet blockerat
+// eller inte laddat görs ingenting.
 function trackEvent(name) {
   try {
     if (window.goatcounter && window.goatcounter.count) {
       window.goatcounter.count({ path: name, event: true });
     }
-  } catch (e) { /* strunta i, aldrig kritiskt */ }
+  } catch (e) { /* ignoreras */ }
 }
 
 let accessToken = null;
@@ -69,11 +70,12 @@ let sheetGridId = null;        // numeriskt sheetId, används för sortering/rad
 let weaponsSheetGridId = null; // numeriskt sheetId för "Vapen"-fliken
 let appReady = false;          // true när ett ark är anslutet och laddat
 let connecting = false;        // true medan connectSheet provar ett (nytt) ark
-let sheetProblem = false;      // true när det kopplade arket slutat svara (403/404)
+let sheetProblem = null;       // null, "unreachable" (403/404) eller "trashed"
+let statsSheetExists = false;  // om fliken Statistik finns i arket
 let currentMode = "training";
 let currentView = "log";
 
-// ---------- Små hjälpare ----------
+// ---------- Hjälpfunktioner ----------
 function isHexColor(s) {
   return typeof s === "string" && /^#[0-9a-f]{6}$/i.test(s);
 }
@@ -154,7 +156,7 @@ function loadScriptOnce(src) {
   return scriptPromises[src];
 }
 
-// ---------- Init ----------
+// ---------- Start ----------
 window.addEventListener("load", () => {
   loadSavedTheme();
   setDateFor("dateInput", "dateDisplay", todayLocalStr());
@@ -174,8 +176,8 @@ window.addEventListener("load", () => {
     link.classList.remove("hidden");
   }
 
-  // Utan API-nyckel kan filväljaren inte öppnas - dölj knapparna istället
-  // för att visa något som bara ger fel, och visa den manuella vägen direkt.
+  // Utan API-nyckel finns ingen filväljare: dölj dess knappar och visa den
+  // manuella vägen direkt.
   if (!CONFIG.PICKER_API_KEY) {
     document.getElementById("sheetPickerBtn").classList.add("hidden");
     document.getElementById("setupPickerBtn").classList.add("hidden");
@@ -276,10 +278,13 @@ function wireStaticEvents() {
   document.getElementById("editDeleteBtn").addEventListener("click", deleteEditedRow);
   wireBackdropClose("editOverlay", closeEditOverlay);
 
-  // Meny → Min logg
-  document.getElementById("menuExportBtn").addEventListener("click", openExportOverlay);
+  // Statistik → PDF-export
+  document.getElementById("statsExportBtn").addEventListener("click", openExportOverlay);
   document.getElementById("exportCancelBtn").addEventListener("click", closeExportOverlay);
   document.getElementById("exportGenerateBtn").addEventListener("click", generatePdf);
+  document.getElementById("exportShareBtn").addEventListener("click", sharePdf);
+  document.getElementById("exportSaveBtn").addEventListener("click", savePdf);
+  document.getElementById("exportDoneCloseBtn").addEventListener("click", closeExportOverlay);
   wireBackdropClose("exportOverlay", closeExportOverlay);
 
   // Meny → Vapen
@@ -352,6 +357,7 @@ function setView(view) {
   currentView = view;
   document.getElementById("viewLog").classList.toggle("hidden", view !== "log");
   document.getElementById("viewCalendar").classList.toggle("hidden", view !== "calendar");
+  document.getElementById("viewStats").classList.toggle("hidden", view !== "stats");
   document.getElementById("viewMenu").classList.toggle("hidden", view !== "menu");
   document.querySelectorAll(".nav-btn").forEach(btn => {
     const active = btn.dataset.view === view;
@@ -361,14 +367,16 @@ function setView(view) {
   });
   window.scrollTo(0, 0);
   if (view === "calendar") loadCalendar();
+  if (view === "stats") loadStats();
   if (view === "menu") updateMenuMeta();
 }
 
 // Efter loggning, redigering, radering eller kösynk.
 function refreshData() {
-  calendarRows = null; // läses om när kalendern visas
+  allRows = null; // läses om när kalendern eller statistiken visas
   loadRecent();
   if (currentView === "calendar") loadCalendar();
+  if (currentView === "stats") loadStats();
 }
 
 // ---------- Inloggning / session ----------
@@ -385,8 +393,7 @@ async function onTokenReceived(resp) {
   document.getElementById("appView").classList.remove("hidden");
   document.getElementById("bottomNav").classList.remove("hidden");
 
-  // Förnyad session (efter "Sessionen gick ut") - allt är redan laddat,
-  // skicka bara iväg det som köats under tiden.
+  // Förnyad session: allt är redan laddat, synka bara kön.
   if (appReady) {
     await trySyncQueue();
     refreshData();
@@ -394,12 +401,11 @@ async function onTokenReceived(resp) {
   }
 
   // Vilket ark gäller?
-  // 1. config.js pekar på ett specifikt ark (fristående installation).
-  // 2. Arket den här enheten använde senast.
-  // 3. Inget känt - låt användaren välja befintligt ELLER skapa nytt.
-  //    (Med drive.file-scopet kan appen inte söka i Driven efter ett ark,
-  //    så ett automatiskt nytt ark skulle bli en tom dubblett för den som
-  //    redan har historik.)
+  // 1. Ett fast ark i config.js (fristående installation).
+  // 2. Arket enheten använde senast.
+  // 3. Okänt: användaren väljer befintligt ark eller skapar ett nytt.
+  //    drive.file tillåter inte sökning i Drive, så ett automatiskt nytt ark
+  //    skulle bli en tom dubblett för den som redan har historik.
   const knownId = CONFIG.SPREADSHEET_ID || localStorage.getItem(LOCAL_SHEET_KEY);
   if (!knownId) {
     openSheetSetup();
@@ -440,7 +446,7 @@ function tokenIsValid() {
 function sessionExpiredError() {
   accessToken = null;
   showReauthBanner();
-  const err = new Error("Sessionen gick ut — tryck på \"Logga in igen\".");
+  const err = new Error("Sessionen gick ut. Tryck på bannern överst för att logga in igen.");
   err.authExpired = true;
   return err;
 }
@@ -472,8 +478,9 @@ function signOut() {
   spreadsheetId = null;
   spreadsheetTitle = "";
   rowCache = {};
-  calendarRows = null;
-  setSheetProblem(false);
+  allRows = null;
+  lastStatsJson = null;
+  setSheetProblem(null);
   hideReauthBanner();
   closeSheetSetup();
   document.querySelectorAll(".overlay").forEach(o => o.classList.add("hidden"));
@@ -484,15 +491,46 @@ function signOut() {
 }
 
 // ---------- Ark-problem (indikator) ----------
-// Tänds när det kopplade arket svarar 403/404 mitt i en session - t.ex.
-// om det raderats eller åtkomsten återkallats. Släcks när ett ark kopplats
-// (om) utan fel.
-function setSheetProblem(on) {
-  sheetProblem = on;
+// "unreachable": arket svarar 403/404 under en session, t.ex. raderat eller
+// åtkomst återkallad. "trashed": arket ligger i papperskorgen i Drive och
+// raderas automatiskt efter 30 dagar. Släcks när ett ark kopplats utan fel.
+const SHEET_PROBLEM_TEXT = {
+  unreachable: {
+    menu: "Appen kommer inte åt arket — tryck för att koppla om",
+    box: "Appen kommer inte åt arket just nu. Välj ditt ark igen via Google Drive nedan."
+  },
+  trashed: {
+    menu: "Arket ligger i papperskorgen — tryck för mer info",
+    box: "Arket ligger i papperskorgen i Google Drive och raderas automatiskt efter 30 dagar. " +
+      "Återställ det i Google Drive (Papperskorg → Återställ) så försvinner varningen nästa gång du öppnar appen."
+  }
+};
+
+function setSheetProblem(kind) {
+  sheetProblem = kind || null;
+  const on = !!sheetProblem;
   document.getElementById("menuAlertDot").classList.toggle("hidden", !on);
-  document.getElementById("sheetProblemBox").classList.toggle("hidden", !on);
+  const box = document.getElementById("sheetProblemBox");
+  box.classList.toggle("hidden", !on);
+  if (on) box.textContent = SHEET_PROBLEM_TEXT[sheetProblem].box;
   document.getElementById("menuSheetBtn").classList.toggle("has-problem", on);
   updateMenuMeta();
+}
+
+// Kontrollerar via Drive API om arket ligger i papperskorgen. Sheets API
+// svarar normalt även för slängda ark, så det syns inte annars. Fel här
+// (t.ex. Drive API ej aktiverat) ignoreras - appen fungerar som vanligt.
+async function checkTrashed() {
+  const id = spreadsheetId;
+  if (!id || !tokenIsValid()) return;
+  try {
+    const res = await fetch(`${DRIVE_BASE}/files/${encodeURIComponent(id)}?fields=trashed`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (id === spreadsheetId && data.trashed === true) setSheetProblem("trashed");
+  } catch (e) { /* ignoreras */ }
 }
 
 // ---------- Koppla ark ----------
@@ -519,8 +557,10 @@ async function connectSheet(id) {
     `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
   appReady = true;
   rowCache = {};
-  calendarRows = null;
-  setSheetProblem(false);
+  allRows = null;
+  lastStatsJson = null;
+  setSheetProblem(null);
+  checkTrashed();
   await trySyncQueue();
   refreshData();
 }
@@ -581,7 +621,7 @@ async function createSpreadsheet() {
     { method: "PUT", body: JSON.stringify({ values: [HEADER_ROW] }) }
   );
 
-  // Fetstil på rubrikraden - kosmetiskt, inget kritiskt om det misslyckas
+  // Fetstil på rubrikraden. Ett fel här stoppar inte skapandet.
   try {
     await sheetsFetch(`${id}:batchUpdate`, {
       method: "POST",
@@ -595,13 +635,13 @@ async function createSpreadsheet() {
         }]
       })
     });
-  } catch (e) { /* kosmetiskt */ }
+  } catch (e) { /* ej kritiskt */ }
 
   return id;
 }
 
 // ---------- Google Picker (filväljare) ----------
-// Laddas först när någon faktiskt trycker på knappen.
+// Laddas först vid behov.
 let pickerReady = null;
 
 function loadPicker() {
@@ -669,6 +709,7 @@ async function pickerCallback(data) {
 
 // ---------- Sheets API ----------
 const SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
+const DRIVE_BASE = "https://www.googleapis.com/drive/v3";
 
 async function sheetsFetch(path, options = {}) {
   if (!tokenIsValid()) throw sessionExpiredError();
@@ -687,11 +728,11 @@ async function sheetsFetch(path, options = {}) {
     const body = await res.json().catch(() => ({}));
     const err = new Error((body.error && body.error.message) || `HTTP ${res.status}`);
     err.status = res.status;
-    // Det redan kopplade arket svarar inte längre -> tänd indikatorn.
-    // (Inte när vi just provar ett nytt ark - då hanteras felet där.)
+    // Det kopplade arket svarar inte längre: tänd indikatorn. Gäller inte
+    // när ett nytt ark provas, där hanteras felet av anroparen.
     if (appReady && !connecting && spreadsheetId && path.startsWith(spreadsheetId) &&
         isSheetUnreachable(err)) {
-      setSheetProblem(true);
+      setSheetProblem("unreachable");
     }
     throw err;
   }
@@ -714,12 +755,13 @@ async function loadSheetMeta() {
   const all = data.sheets.map(s => s.properties);
   const logSheet =
     all.find(s => s.title === LOG_TAB_NAME) ||
-    all.find(s => s.title !== WEAPONS_TAB_NAME) ||
+    all.find(s => s.title !== WEAPONS_TAB_NAME && s.title !== STATS_TAB_NAME) ||
     all[0];
   sheetTitle = logSheet.title;
   sheetGridId = logSheet.sheetId;
   const weaponsSheet = all.find(s => s.title === WEAPONS_TAB_NAME);
   weaponsSheetGridId = weaponsSheet ? weaponsSheet.sheetId : null;
+  statsSheetExists = all.some(s => s.title === STATS_TAB_NAME);
 }
 
 // Skapar fliken "Vapen" om den inte redan finns, med standardvapnen.
@@ -735,44 +777,54 @@ async function ensureWeaponsSheet() {
   weaponsSheetGridId = result.replies[0].addSheet.properties.sheetId;
 
   await sheetsFetch(
-    `${spreadsheetId}/values/${a1(WEAPONS_TAB_NAME, `A1:B${DEFAULT_WEAPONS.length}`)}?valueInputOption=RAW`,
-    { method: "PUT", body: JSON.stringify({ values: DEFAULT_WEAPONS.map(w => [w, ""]) }) }
+    `${spreadsheetId}/values/${a1(WEAPONS_TAB_NAME, `A1:D${DEFAULT_WEAPONS.length}`)}?valueInputOption=RAW`,
+    { method: "PUT", body: JSON.stringify({ values: DEFAULT_WEAPONS.map(w => [w, "", DEFAULT_BOX_SIZE, ""]) }) }
   );
   weaponsRowCount = DEFAULT_WEAPONS.length;
 }
 
 async function loadWeapons() {
   try {
-    const data = await sheetsFetch(`${spreadsheetId}/values/${a1(WEAPONS_TAB_NAME, "A:B")}`);
+    const data = await sheetsFetch(`${spreadsheetId}/values/${a1(WEAPONS_TAB_NAME, "A:D")}`);
     const raw = data.values || [];
     weaponsRowCount = raw.length;
     const values = raw
-      .map(r => ({ name: String(r[0] || "").trim(), favorite: r[1] === "1" }))
+      .map(r => ({
+        name: String(r[0] || "").trim(),
+        favorite: r[1] === "1",
+        box: parseBoxSize(r[2]),
+        hidden: r[3] === "1"
+      }))
       .filter(w => w.name);
     weaponsList = values.length > 0
       ? values
-      : DEFAULT_WEAPONS.map(name => ({ name, favorite: false }));
+      : DEFAULT_WEAPONS.map(name => ({ name, favorite: false, box: DEFAULT_BOX_SIZE, hidden: false }));
   } catch (e) {
-    weaponsList = DEFAULT_WEAPONS.map(name => ({ name, favorite: false })); // reserv
-    weaponsRowCount = 100; // okänt - töm generöst vid nästa sparning
+    weaponsList = DEFAULT_WEAPONS.map(name => ({ name, favorite: false, box: DEFAULT_BOX_SIZE, hidden: false }));
+    weaponsRowCount = 100; // okänt antal: töm med marginal vid nästa sparning
   }
 }
 
-// Sparar hela listan i ETT anrop (istället för "rensa, sedan skriv"), så
-// listan aldrig kan bli tom i arket om skrivningen misslyckas. Överskjutande
-// gamla rader skrivs över med tomt. Sparningar körs i tur och ordning, så
-// snabba klick (stjärna, dra, ta bort) inte kan krocka.
+// Skott per ask: heltal 1–1000, annars standardvärdet.
+function parseBoxSize(v) {
+  const n = parseInt(v, 10);
+  return n >= 1 && n <= MAX_BOX_SIZE ? n : DEFAULT_BOX_SIZE;
+}
+
+// Sparar hela listan i ett anrop i stället för att först rensa, så att
+// listan aldrig blir tom i arket om skrivningen misslyckas. Överskjutande
+// rader töms. Sparningar köas, så att snabba ändringar inte krockar.
 let weaponsSaveChain = Promise.resolve();
 
 function saveWeapons(list) {
-  const snapshot = list.map(w => [w.name, w.favorite ? "1" : ""]);
+  const snapshot = list.map(w => [w.name, w.favorite ? "1" : "", w.box || DEFAULT_BOX_SIZE, w.hidden ? "1" : ""]);
   const run = async () => {
     const total = Math.max(snapshot.length, weaponsRowCount, 1);
     const values = snapshot.concat(
-      Array.from({ length: total - snapshot.length }, () => ["", ""])
+      Array.from({ length: total - snapshot.length }, () => ["", "", "", ""])
     );
     await sheetsFetch(
-      `${spreadsheetId}/values/${a1(WEAPONS_TAB_NAME, `A1:B${total}`)}?valueInputOption=RAW`,
+      `${spreadsheetId}/values/${a1(WEAPONS_TAB_NAME, `A1:D${total}`)}?valueInputOption=RAW`,
       { method: "PUT", body: JSON.stringify({ values }) }
     );
     weaponsRowCount = snapshot.length;
@@ -799,7 +851,7 @@ async function loadRecent() {
     const rows = await readLogRows("A2:F9");
     const cards = [];
     rows.forEach((row, i) => {
-      if (row.every(c => !c.trim())) return; // hoppa över tomma rader
+      if (row.every(c => !c.trim())) return;
       const rowNumber = i + 2;
       rowCache[rowNumber] = row;
       cards.push(rowToCard(row, rowNumber));
@@ -841,9 +893,34 @@ function escapeHtml(s) {
   }[m]));
 }
 
+// ---------- Hela loggboken (kalender, statistik) ----------
+let allRows = null;         // [{ row, rowNumber }], null = inte läst än
+let allRowsLoading = null;  // pågående läsning, så att flera anrop delar samma
+
+async function ensureAllRows() {
+  if (allRows) return allRows;
+  if (!allRowsLoading) {
+    allRowsLoading = (async () => {
+      try {
+        const rows = await readLogRows("A2:F");
+        const parsed = [];
+        rows.forEach((row, i) => {
+          if (!row[0] || row.every(c => !c.trim())) return;
+          const rowNumber = i + 2;
+          rowCache[rowNumber] = row;
+          parsed.push({ row, rowNumber });
+        });
+        allRows = parsed;
+        return parsed;
+      } finally {
+        allRowsLoading = null;
+      }
+    })();
+  }
+  return allRowsLoading;
+}
+
 // ---------- Kalender ----------
-let calendarRows = null;     // [{ row, rowNumber }] - null = inte läst än
-let calendarLoading = null;  // pågående läsning, så flera klick inte dubblerar
 let calMonth = null;         // Date, första dagen i visad månad
 let calSelected = null;      // ISO-datum för vald dag
 
@@ -859,34 +936,17 @@ async function loadCalendar() {
   if (!appReady) return;
   ensureCalendarState();
   renderCalendar(); // rita direkt (tomt eller med tidigare data)
-  if (calendarRows) return;
+  if (allRows) return;
 
-  if (!calendarLoading) {
-    document.getElementById("calDayList").innerHTML = `<p class="muted small">Laddar...</p>`;
-    calendarLoading = (async () => {
-      try {
-        const rows = await readLogRows("A2:F");
-        const parsed = [];
-        rows.forEach((row, i) => {
-          if (!row[0] || row.every(c => !c.trim())) return;
-          const rowNumber = i + 2;
-          rowCache[rowNumber] = row;
-          parsed.push({ row, rowNumber });
-        });
-        calendarRows = parsed;
-      } catch (e) {
-        document.getElementById("calDayList").innerHTML =
-          `<p class="muted small">Kunde inte hämta: ${escapeHtml(e.message)}</p>`;
-        throw e;
-      } finally {
-        calendarLoading = null;
-      }
-    })();
-  }
+  document.getElementById("calDayList").innerHTML = `<p class="muted small">Laddar...</p>`;
   try {
-    await calendarLoading;
-    renderCalendar();
-  } catch (e) { /* redan visat */ }
+    await ensureAllRows();
+  } catch (e) {
+    document.getElementById("calDayList").innerHTML =
+      `<p class="muted small">Kunde inte hämta: ${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  if (currentView === "calendar") renderCalendar();
 }
 
 function shiftCalendarMonth(delta) {
@@ -913,7 +973,7 @@ function renderCalendar() {
 
   // Typer per datum (unika, i ordningen träning, tävling, annat)
   const typesByDate = {};
-  (calendarRows || []).forEach(({ row }) => {
+  (allRows || []).forEach(({ row }) => {
     const d = row[0];
     if (!typesByDate[d]) typesByDate[d] = new Set();
     typesByDate[d].add(activityType(row[1]));
@@ -951,20 +1011,19 @@ function renderCalendar() {
     btn.addEventListener("click", () => selectCalendarDay(btn.dataset.date));
   });
 
-  // Summering: antal DAGAR per typ i visad månad
+  // Summering: antal dagar per typ i visad månad
   const prefix = `${year}-${String(month + 1).padStart(2, "0")}-`;
   const counts = { training: 0, competition: 0, other: 0 };
   Object.keys(typesByDate).forEach(iso => {
     if (!iso.startsWith(prefix)) return;
     typesByDate[iso].forEach(t => { counts[t]++; });
   });
-  const loaded = calendarRows !== null;
+  const loaded = allRows !== null;
   document.getElementById("calSummaryLabel").textContent = `Dagar i ${MONTH_NAMES[month]}`;
   document.getElementById("calCountTraining").textContent = loaded ? counts.training : "–";
   document.getElementById("calCountCompetition").textContent = loaded ? counts.competition : "–";
   document.getElementById("calCountOther").textContent = loaded ? counts.other : "–";
 
-  // Vald dag
   const [sy, sm, sd] = calSelected.split("-").map(Number);
   const selDate = new Date(sy, sm - 1, sd);
   const wd = WEEKDAY_NAMES[selDate.getDay()];
@@ -973,13 +1032,221 @@ function renderCalendar() {
 
   if (!loaded) return; // "Laddar..." eller felmeddelande står kvar
   const list = document.getElementById("calDayList");
-  const dayRows = calendarRows.filter(r => r.row[0] === calSelected);
+  const dayRows = allRows.filter(r => r.row[0] === calSelected);
   if (dayRows.length === 0) {
     list.innerHTML = `<p class="muted small">Inga pass den här dagen.</p>`;
     return;
   }
   list.innerHTML = dayRows.map(r => rowToCard(r.row, r.rowNumber)).join("");
   wireCardClicks(list);
+}
+
+// ---------- Statistik ----------
+// Beräknas ur hela loggboken. Pass i askar räknas om med vapnets askstorlek
+// och markeras som uppskattning (≈). Samma siffror skrivs till fliken
+// Statistik i arket, som värden och inte formler: formlers syntax beror på
+// arkets språkinställning.
+let lastStatsJson = null;   // senast skrivna innehåll, så att oförändrat inte skrivs om
+let statsWriting = false;
+
+function daysSince(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const then = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((today - then) / 86400000);
+}
+
+function relativeDays(n) {
+  if (n <= 0) return "idag";
+  if (n === 1) return "igår";
+  if (n < 14) return `${n} dagar sedan`;
+  if (n < 60) return `${Math.round(n / 7)} veckor sedan`;
+  if (n < 730) return `${Math.round(n / 30.44)} mån sedan`;
+  return `${Math.floor(n / 365.25)} år sedan`;
+}
+
+function formatCount(n, approx) {
+  const s = Math.round(n).toLocaleString("sv-SE");
+  return approx ? "≈ " + s : s;
+}
+
+function boxSizeFor(key) {
+  const w = weaponsList.find(w => normalizeWeaponName(w.name) === key);
+  return w ? (w.box || DEFAULT_BOX_SIZE) : DEFAULT_BOX_SIZE;
+}
+
+function shotsFor(amount, box) {
+  const p = parseAmount(amount);
+  if (p.unit === "skott") return { shots: p.value, approx: false };
+  if (p.unit === "ask") return { shots: p.value * box, approx: true };
+  return { shots: 0, approx: false };
+}
+
+function computeStats(rows) {
+  const cut = new Date();
+  cut.setFullYear(cut.getFullYear() - 1);
+  const cutoff = localIsoDate(cut);
+
+  const weapons = {};
+  const sessions = new Set();
+  const comps = new Set();
+  const months = {};
+  let since = null;
+  let totalShots = 0;
+  let totalApprox = false;
+
+  rows.forEach(({ row }) => {
+    const [date, activity, rawWeapon, amount] = row;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    const type = activityType(activity);
+    if (!since || date < since) since = date;
+    sessions.add(date + "|" + type);
+    if (type === "competition") comps.add(date);
+
+    const mk = date.slice(0, 7);
+    if (!months[mk]) {
+      months[mk] = { training: new Set(), competition: new Set(), other: new Set(), shots: 0 };
+    }
+    months[mk][type].add(date);
+
+    const key = normalizeWeaponName(rawWeapon);
+    if (!key) return;
+    const { shots, approx } = shotsFor(amount, boxSizeFor(key));
+    totalShots += shots;
+    if (approx) totalApprox = true;
+    months[mk].shots += shots;
+
+    if (!weapons[key]) {
+      weapons[key] = { name: key, pass: 0, pass12: 0, shots: 0, shots12: 0,
+        approx: false, approx12: false, last: date, first: date };
+    }
+    const w = weapons[key];
+    w.pass++;
+    w.shots += shots;
+    if (approx) w.approx = true;
+    if (date > cutoff) {
+      w.pass12++;
+      w.shots12 += shots;
+      if (approx) w.approx12 = true;
+    }
+    if (date > w.last) w.last = date;
+    if (date < w.first) w.first = date;
+  });
+
+  return {
+    since,
+    passCount: sessions.size,
+    compCount: comps.size,
+    totalShots,
+    totalApprox,
+    weapons: Object.values(weapons).sort((a, b) =>
+      b.last.localeCompare(a.last) || a.name.localeCompare(b.name, "sv")),
+    months: Object.keys(months).sort().reverse().map(k => ({
+      month: k,
+      training: months[k].training.size,
+      competition: months[k].competition.size,
+      other: months[k].other.size,
+      shots: months[k].shots
+    }))
+  };
+}
+
+async function loadStats() {
+  if (!appReady) return;
+  const list = document.getElementById("statsWeaponList");
+  if (!allRows) list.innerHTML = `<p class="muted small">Laddar...</p>`;
+  let rows;
+  try {
+    rows = await ensureAllRows();
+  } catch (e) {
+    list.innerHTML = `<p class="muted small">Kunde inte hämta: ${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  if (currentView !== "stats") return;
+  const stats = computeStats(rows);
+  renderStats(stats);
+  writeStatsSheet(stats);
+}
+
+function renderStats(stats) {
+  document.getElementById("statsSince").textContent = stats.since ? `Sedan ${stats.since}` : "";
+  document.getElementById("statsPass").textContent = formatCount(stats.passCount, false);
+  document.getElementById("statsShots").textContent = formatCount(stats.totalShots, stats.totalApprox);
+  document.getElementById("statsComps").textContent = formatCount(stats.compCount, false);
+
+  const list = document.getElementById("statsWeaponList");
+  if (stats.weapons.length === 0) {
+    list.innerHTML = `<p class="muted small">Inga pass med vapen loggade ännu.</p>`;
+    return;
+  }
+  list.innerHTML = stats.weapons.map(w => {
+    const days = daysSince(w.last);
+    return `
+      <div class="stat-card">
+        <div class="stat-head">
+          <span class="stat-name">${escapeHtml(w.name)}</span>
+          <span class="stat-last${days <= 30 ? " stat-last--recent" : ""}">${relativeDays(days)}</span>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-cell"><span>Pass</span><span class="mono">${formatCount(w.pass, false)}</span></div>
+          <div class="stat-cell"><span>12 mån</span><span class="mono">${formatCount(w.pass12, false)}</span></div>
+          <div class="stat-cell"><span>Skott</span><span class="mono">${formatCount(w.shots, w.approx)}</span></div>
+          <div class="stat-cell"><span>12 mån</span><span class="mono">${formatCount(w.shots12, w.approx12)}</span></div>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+// Fliken Statistik ägs av appen och skrivs om helt. Fel här påverkar inte
+// statistiken i appen och visas därför inte.
+async function writeStatsSheet(stats) {
+  const table = [
+    ["Vapen", "Pass", "Pass 12 mån", "Skott", "Skott 12 mån", "Senast"],
+    ...stats.weapons.map(w => [w.name, w.pass, w.pass12, Math.round(w.shots), Math.round(w.shots12), w.last]),
+    [],
+    ["Månad", "Träning (dagar)", "Tävling (dagar)", "Annat (dagar)", "Skott"],
+    ...stats.months.map(m => [m.month, m.training, m.competition, m.other, Math.round(m.shots)]),
+    [],
+    ["Skott från pass i askar är beräknade med askstorleken i fliken Vapen."]
+  ];
+  const json = JSON.stringify(table);
+  if (json === lastStatsJson || statsWriting) return;
+
+  const now = new Date();
+  const stamp = `${todayLocalStr()} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const values = [
+    ["Statistik"],
+    [`Uppdaterad av Skyttelogg ${stamp}. Fliken skrivs om vid nästa uppdatering – bygg egna beräkningar i en annan flik.`],
+    [],
+    ...table
+  ];
+
+  const id = spreadsheetId;
+  statsWriting = true;
+  try {
+    if (!statsSheetExists) {
+      try {
+        await sheetsFetch(`${id}:batchUpdate`, {
+          method: "POST",
+          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: STATS_TAB_NAME } } }] })
+        });
+      } catch (e) {
+        if (!/already exists|finns redan/i.test(e.message || "")) throw e;
+      }
+      statsSheetExists = true;
+    }
+    await sheetsFetch(`${id}/values/${a1(STATS_TAB_NAME, "A:Z")}:clear`, { method: "POST", body: "{}" });
+    await sheetsFetch(
+      `${id}/values/${a1(STATS_TAB_NAME, "A1")}?valueInputOption=RAW`,
+      { method: "PUT", body: JSON.stringify({ values }) }
+    );
+    if (id === spreadsheetId) lastStatsJson = json;
+  } catch (e) {
+    /* ignoreras */
+  } finally {
+    statsWriting = false;
+  }
 }
 
 // ---------- Skriva ----------
@@ -1043,6 +1310,17 @@ function queueRows(rows) {
 }
 
 let syncInProgress = false;
+let queueRetryTimer = null;
+
+// Vid 429 (för många anrop) görs ett nytt försök efter en minut, när
+// Googles kvot har fyllts på.
+function scheduleQueueRetry() {
+  if (queueRetryTimer) return;
+  queueRetryTimer = setTimeout(() => {
+    queueRetryTimer = null;
+    trySyncQueue();
+  }, 60000);
+}
 
 async function trySyncQueue() {
   if (!appReady || !tokenIsValid() || !spreadsheetId || syncInProgress) return;
@@ -1059,6 +1337,7 @@ async function trySyncQueue() {
         setQueue(queue);
         syncedAny = true;
       } catch (e) {
+        if (e.status === 429) scheduleQueueRetry();
         break; // fortfarande offline (eller annat fel) - försök igen nästa gång
       }
     }
@@ -1067,7 +1346,7 @@ async function trySyncQueue() {
   }
 
   if (syncedAny) {
-    try { await sortSheetByDateDesc(); } catch (e) { /* kosmetiskt */ }
+    try { await sortSheetByDateDesc(); } catch (e) { /* ej kritiskt */ }
     showToast("Köade pass synkade!", false);
     refreshData();
   }
@@ -1078,9 +1357,8 @@ function buildWeaponList() {
   const container = document.getElementById("weaponList");
   container.innerHTML = "";
 
-  weaponsList.forEach(w => container.appendChild(weaponChip(w.name)));
+  weaponsList.filter(w => !w.hidden).forEach(w => container.appendChild(weaponChip(w.name)));
 
-  // Fritextchip för valfritt vapen - alltid tillgängligt
   const chip = document.createElement("label");
   chip.className = "weapon-chip weapon-chip--custom";
   chip.dataset.weapon = "";
@@ -1151,8 +1429,8 @@ function loadSavedTheme() {
   if (saved.id === "custom" && isHexColor(saved.hex)) {
     applyThemeColors(saved.hex, darkenHex(saved.hex, 0.62), hexToRgbTriple(saved.hex), "custom");
   } else {
-    // Förinställda teman läses alltid från THEMES, så justerade färger
-    // (t.ex. Vinröd) slår igenom även för den som valt temat tidigare.
+    // Förinställda teman läses från THEMES, så ändrade färgvärden slår
+    // igenom även för tidigare sparade val.
     const t = THEMES.find(t => t.id === saved.id);
     if (t) applyThemeColors(t.hex, t.dim, t.rgb, t.id);
   }
@@ -1201,15 +1479,21 @@ function closeThemeOverlay() {
 // ---------- Meny ----------
 function updateMenuMeta() {
   const n = weaponsList.length;
-  document.getElementById("menuWeaponsCount").textContent = n ? `${n} st` : "";
+  const hiddenCount = weaponsList.filter(w => w.hidden).length;
+  document.getElementById("menuWeaponsCount").textContent =
+    n ? `${n} st` + (hiddenCount ? ` · ${hiddenCount} dolda` : "") : "";
   document.getElementById("menuSheetSub").textContent = sheetProblem
-    ? "Appen kommer inte åt arket — tryck för att koppla om"
+    ? SHEET_PROBLEM_TEXT[sheetProblem].menu
     : (spreadsheetTitle ? `Kopplad: ${spreadsheetTitle}` : "");
 }
 
 // ---------- Meny → Ark ----------
+// Alla nya ark heter "Skyttelogg". De sista tecknen i ID:t gör det möjligt
+// att jämföra med adressraden i Google Sheets.
 function openSheetOverlay() {
-  document.getElementById("currentSheetName").textContent = spreadsheetTitle || "–";
+  const shortId = spreadsheetId ? ` · …${spreadsheetId.slice(-4)}` : "";
+  document.getElementById("currentSheetName").textContent =
+    spreadsheetTitle ? spreadsheetTitle + shortId : "–";
   document.getElementById("sheetOverlay").classList.remove("hidden");
 }
 function closeSheetOverlay() {
@@ -1243,8 +1527,7 @@ function openSwishApp() {
     message: { value: "Tack för Skyttelogg!", editable: true }
   };
   const url = "swish://payment?data=" + encodeURIComponent(JSON.stringify(payload));
-  // Experimentellt - fungerar det inte öppnas bara ingenting, och numret
-  // för manuell Swish står redan synligt i samma panel som reserv.
+  // Öppnas inte Swish-appen finns numret för manuell betalning i samma panel.
   window.location.href = url;
 }
 
@@ -1275,7 +1558,7 @@ function renderWeaponsManageList() {
     return;
   }
   container.innerHTML = weaponsList.map((w, i) => `
-    <div class="weapon-manage-row${w.favorite ? " favorite" : ""}" data-index="${i}">
+    <div class="weapon-manage-row${w.favorite ? " favorite" : ""}${w.hidden ? " is-hidden" : ""}" data-index="${i}">
       <span class="weapon-drag-handle" aria-label="Dra för att ändra ordning">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <line x1="4" y1="8" x2="20" y2="8"></line>
@@ -1284,8 +1567,23 @@ function renderWeaponsManageList() {
       </span>
       <button type="button" class="weapon-star-btn" data-index="${i}" aria-label="${w.favorite ? "Ta bort favorit" : "Gör till favorit"}">${w.favorite ? "★" : "☆"}</button>
       <span class="weapon-manage-name">${escapeHtml(w.name)}</span>
+      <label class="weapon-box">
+        <input type="number" class="weapon-box-input mono" data-index="${i}" inputmode="numeric" min="1" max="${MAX_BOX_SIZE}" value="${w.box || DEFAULT_BOX_SIZE}" aria-label="Skott per ask för ${escapeHtml(w.name)}">
+        <span class="weapon-box-unit">/ask</span>
+      </label>
+      <button type="button" class="weapon-hide-btn" data-index="${i}" aria-pressed="${w.hidden ? "true" : "false"}" aria-label="${w.hidden ? "Visa i loggningen" : "Dölj i loggningen"}">
+        <svg viewBox="0 0 24 24" aria-hidden="true">${w.hidden ? EYE_OFF_ICON : EYE_ICON}</svg>
+      </button>
       <button type="button" class="weapon-remove-btn" data-index="${i}" aria-label="Ta bort">×</button>
     </div>`).join("");
+
+  container.querySelectorAll(".weapon-hide-btn").forEach(btn => {
+    btn.addEventListener("click", () => toggleHidden(parseInt(btn.dataset.index, 10)));
+  });
+
+  container.querySelectorAll(".weapon-box-input").forEach(input => {
+    input.addEventListener("change", () => setBoxSize(parseInt(input.dataset.index, 10), input.value));
+  });
 
   container.querySelectorAll(".weapon-remove-btn").forEach(btn => {
     btn.addEventListener("click", () => removeWeapon(parseInt(btn.dataset.index, 10)));
@@ -1298,11 +1596,22 @@ function renderWeaponsManageList() {
   });
 }
 
+const EYE_ICON = '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle>';
+const EYE_OFF_ICON = '<path d="M17.94 17.94A10.1 10.1 0 0 1 12 19c-7 0-11-7-11-7a18.5 18.5 0 0 1 5.06-5.94"></path><path d="M9.9 5.24A9.1 9.1 0 0 1 12 5c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19"></path><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"></path><line x1="2" y1="2" x2="22" y2="22"></line>';
+
+// Dolda vapen visas inte i loggningen men finns kvar i listan och i
+// statistiken.
+function toggleHidden(index) {
+  const w = weaponsList[index];
+  if (!w) return;
+  w.hidden = !w.hidden;
+  persistAndRefreshWeapons();
+}
+
 function toggleFavorite(index) {
   const item = weaponsList[index];
   item.favorite = !item.favorite;
   if (item.favorite) {
-    // Flytta favoritmarkerat vapen till toppen av listan
     weaponsList.splice(index, 1);
     weaponsList.unshift(item);
   }
@@ -1377,13 +1686,53 @@ async function addWeapon() {
     showToast("Det vapnet finns redan i listan.", true);
     return;
   }
-  weaponsList.push({ name, favorite: false });
+  weaponsList.push({ name, favorite: false, box: DEFAULT_BOX_SIZE, hidden: false });
   input.value = "";
   await persistAndRefreshWeapons();
 }
 
+function setBoxSize(index, value) {
+  const w = weaponsList[index];
+  if (!w) return;
+  const n = parseInt(value, 10);
+  if (!(n >= 1 && n <= MAX_BOX_SIZE)) {
+    showToast(`Skott per ask ska vara ett heltal mellan 1 och ${MAX_BOX_SIZE}.`, true);
+    renderWeaponsManageList();
+    return;
+  }
+  if (n === w.box) return;
+  w.box = n;
+  persistAndRefreshWeapons();
+}
+
+function normalizeWeaponName(s) {
+  return String(s || "").replace(/\s+/g, " ").trim();
+}
+
+// Har vapnet loggade pass informeras användaren om att historiken ligger
+// kvar under det gamla namnet. Loggboken skrivs aldrig om.
 async function removeWeapon(index) {
-  weaponsList.splice(index, 1);
+  const w = weaponsList[index];
+  if (!w) return;
+  let count = 0;
+  try {
+    const rows = await ensureAllRows();
+    const key = normalizeWeaponName(w.name);
+    count = rows.filter(r => normalizeWeaponName(r.row[2]) === key).length;
+  } catch (e) { /* utan uppkoppling: ta bort utan räkning */ }
+
+  if (count > 0) {
+    const passText = count === 1 ? "1 pass är loggat" : `${count} pass är loggade`;
+    const ok = confirm(
+      `Ta bort "${w.name}"?\n\n${passText} med det här namnet. De ligger kvar i arket ` +
+      "och visas i statistiken under det gamla namnet.\n\n" +
+      "Byter du bara namn: lägg till det nya namnet först. Äldre pass räknas då på det gamla namnet."
+    );
+    if (!ok) return;
+  }
+  const i = weaponsList.indexOf(w);
+  if (i < 0) return;
+  weaponsList.splice(i, 1);
   await persistAndRefreshWeapons();
 }
 
@@ -1487,7 +1836,7 @@ function showToast(msg, isError) {
   toastTimer = setTimeout(() => toast.classList.remove("visible"), isError ? 4500 : 2800);
 }
 
-// ---------- Reset ----------
+// ---------- Återställ formulär ----------
 function resetForm() {
   document.getElementById("noteInput").value = "";
   document.getElementById("activityTypeInput").value = "";
@@ -1547,7 +1896,7 @@ function handleEditError(e) {
   showToast(e.rowChanged ? e.message : "Ett fel uppstod: " + e.message, true);
   if (e.rowChanged) {
     closeEditOverlay();
-    calendarRows = null;
+    allRows = null;
     refreshData();
   }
 }
@@ -1579,10 +1928,10 @@ async function saveEditedRow() {
     return;
   }
 
-  try { await sortSheetByDateDesc(); } catch (e) { /* kosmetiskt */ }
+  try { await sortSheetByDateDesc(); } catch (e) { /* ej kritiskt */ }
   showToast("Passet uppdaterat!", false);
   closeEditOverlay();
-  calendarRows = null;
+  allRows = null;
   rowCache = {};
   refreshData();
   btn.disabled = false;
@@ -1608,7 +1957,7 @@ async function deleteEditedRow() {
     });
     showToast("Passet raderat.", false);
     closeEditOverlay();
-    calendarRows = null;
+    allRows = null;
     rowCache = {};
     refreshData();
   } catch (e) {
@@ -1619,8 +1968,8 @@ async function deleteEditedRow() {
 }
 
 // ---------- PDF-export ----------
-// Tolkar "1 ask" / "2½ askar" / "½ ask" / "43 skott" tillbaka till ett tal
-// OCH vilken enhet det var - de två går inte att slå ihop till samma summa.
+// Tolkar "1 ask", "2½ askar", "½ ask" och "43 skott" till värde och enhet.
+// Askar och skott summeras var för sig.
 function parseAmount(str) {
   if (!str) return { value: 0, unit: null };
   const s = String(str).trim();
@@ -1660,16 +2009,62 @@ function buildSummary(rows) {
   return { weaponStats, otherStats };
 }
 
+// Senast skapade PDF, för Dela/Spara. Delning kräver ett färskt tryck från
+// användaren, därför skapas filen först och delas i ett andra steg.
+let lastPdf = null; // { doc, blob, name }
+
 function openExportOverlay() {
   const d = new Date();
   d.setFullYear(d.getFullYear() - 1);
   setDateFor("exportFromInput", "exportFromDisplay", localIsoDate(d));
   setDateFor("exportToInput", "exportToDisplay", todayLocalStr());
+  lastPdf = null;
+  document.getElementById("exportForm").classList.remove("hidden");
+  document.getElementById("exportDone").classList.add("hidden");
   document.getElementById("exportOverlay").classList.remove("hidden");
 }
 
 function closeExportOverlay() {
   document.getElementById("exportOverlay").classList.add("hidden");
+  lastPdf = null;
+}
+
+function pdfFile() {
+  return new File([lastPdf.blob], lastPdf.name, { type: "application/pdf" });
+}
+
+function canSharePdf() {
+  try {
+    return !!(lastPdf && navigator.canShare && navigator.share && navigator.canShare({ files: [pdfFile()] }));
+  } catch (e) {
+    return false;
+  }
+}
+
+function showExportDone(from, to) {
+  document.getElementById("exportDonePeriod").textContent =
+    `${formatDateDisplay(from)} – ${formatDateDisplay(to)}`;
+  document.getElementById("exportFileName").textContent = lastPdf.name;
+  document.getElementById("exportShareBtn").classList.toggle("hidden", !canSharePdf());
+  document.getElementById("exportShareHint").classList.toggle("hidden", canSharePdf());
+  document.getElementById("exportForm").classList.add("hidden");
+  document.getElementById("exportDone").classList.remove("hidden");
+}
+
+async function sharePdf() {
+  if (!lastPdf) return;
+  try {
+    await navigator.share({ files: [pdfFile()], title: "Skyttelogg" });
+    trackEvent("pdf-delad");
+  } catch (e) {
+    if (e && e.name === "AbortError") return; // användaren stängde delningen
+    showToast("Kunde inte dela filen – använd Spara istället.", true);
+  }
+}
+
+function savePdf() {
+  if (!lastPdf) return;
+  lastPdf.doc.save(lastPdf.name);
 }
 
 async function generatePdf() {
@@ -1699,10 +2094,10 @@ async function generatePdf() {
       return;
     }
 
-    buildPdf(rows, from, to);
-    showToast("PDF skapad!", false);
+    const doc = buildPdf(rows, from, to);
+    lastPdf = { doc, blob: doc.output("blob"), name: `skyttelogg-${from}-till-${to}.pdf` };
     trackEvent("pdf-exporterad");
-    closeExportOverlay();
+    showExportDone(from, to);
   } catch (e) {
     showToast("Ett fel uppstod: " + e.message, true);
   } finally {
@@ -1828,7 +2223,7 @@ function buildPdf(rows, from, to) {
     const rowLines = Math.max(...splitCells.map(lines => lines.length), 1);
     const rowHeight = rowLines * lineHeight;
 
-    // Kolla platsen INNAN vi ritar, annars kapas raden vid sidbrytning
+    // Sidbryt före raden om den inte får plats, så att den inte delas.
     if (y + rowHeight > 275) {
       doc.addPage();
       y = 20;
@@ -1855,10 +2250,10 @@ function buildPdf(rows, from, to) {
   doc.setTextColor(20, 20, 20);
   doc.text(`Totalt antal loggade poster: ${rows.length}`, marginX, y);
 
-  doc.save(`skyttelogg-${from}-till-${to}.pdf`);
+  return doc;
 }
 
-// ---------- Submit ----------
+// ---------- Logga pass ----------
 async function submitLog() {
   if (!appReady) return showToast("Koppla ett kalkylark först.", true);
 
@@ -1913,17 +2308,21 @@ async function submitLog() {
   logBtn.disabled = true;
   showToast("Loggar...", false);
 
-  // Själva skrivningen. Bara om DEN misslyckas köas passet - annars kunde
-  // ett lyckat pass hamna i kön och dubbleras vid nästa synk.
+  // Köa bara om själva skrivningen misslyckas. Annars kan ett sparat pass
+  // hamna i kön och dubbleras vid nästa synk.
   try {
     await appendRows(rows);
   } catch (e) {
     const isOffline = !navigator.onLine || e instanceof TypeError;
-    if (isOffline || e.authExpired) {
+    const rateLimited = e.status === 429;
+    if (isOffline || e.authExpired || rateLimited) {
       queueRows(rows);
+      if (rateLimited) scheduleQueueRetry();
       showToast(isOffline
         ? "Ingen uppkoppling - sparat, synkas automatiskt."
-        : "Sessionen gick ut - passet är sparat och synkas när du loggat in igen.", false);
+        : rateLimited
+          ? "Många loggar just nu - passet är sparat och skickas om en stund."
+          : "Sessionen gick ut - passet är sparat och synkas när du loggat in igen.", false);
       trackEvent("pass-loggat");
       resetForm();
     } else if (isSheetUnreachable(e)) {
@@ -1935,7 +2334,7 @@ async function submitLog() {
     return;
   }
 
-  try { await sortSheetByDateDesc(); } catch (e) { /* kosmetiskt - passet är sparat */ }
+  try { await sortSheetByDateDesc(); } catch (e) { /* ej kritiskt, passet är sparat */ }
   showToast("Passet är loggat!", false);
   trackEvent("pass-loggat");
   resetForm();

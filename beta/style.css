@@ -3,7 +3,6 @@
   --surface: #1A1F29;
   --surface-raised: #242A36;
   --surface-high: #2E3544;
-  --line: #2E3544;
   --line-soft: #242A36;
   --text: #E8EAEE;
   --text-secondary: #A3ABB8;
@@ -37,7 +36,7 @@ body {
 .small { font-size: 13px; }
 .hidden { display: none !important; }
 
-/* ---------- Topbar ---------- */
+/* ---------- Toppfält ---------- */
 .topbar {
   position: sticky;
   top: 0;
@@ -66,7 +65,7 @@ body {
   color: var(--text-secondary);
 }
 
-/* ---------- Shell / vyer ---------- */
+/* ---------- Layout och vyer ---------- */
 .app-shell {
   max-width: 440px;
   margin: 0 auto;
@@ -97,7 +96,7 @@ body {
 }
 .card-list { display: flex; flex-direction: column; gap: 8px; }
 
-/* ---------- Sign-in view ---------- */
+/* ---------- Inloggning ---------- */
 .center-panel {
   text-align: center;
   padding: 60px 12px 20px;
@@ -125,7 +124,7 @@ body {
 }
 .fine-print { font-size: 12px; margin-top: 16px !important; }
 
-/* ---------- Buttons ---------- */
+/* ---------- Knappar ---------- */
 .btn {
   font-family: inherit;
   font-size: 15px;
@@ -178,7 +177,7 @@ body {
   cursor: pointer;
 }
 
-/* ---------- Fields ---------- */
+/* ---------- Fält ---------- */
 .field-group { margin-bottom: 12px; }
 .field-group--last { margin-bottom: 0; }
 .field-group label {
@@ -366,7 +365,7 @@ body {
 #weaponList[data-unit="skott"] .weapon-chip:has(.chip-input:checked) .chip-shots { display: flex !important; }
 .hint { font-size: 12px; margin: 2px 6px 0; }
 
-/* ---------- Kö + senaste ---------- */
+/* ---------- Kö och senaste ---------- */
 .queue-row {
   display: flex;
   align-items: center;
@@ -480,6 +479,68 @@ body {
 .summary-num--accent { color: var(--brass); }
 .summary-cap { font-size: 12px; color: var(--text-secondary); }
 
+/* ---------- Statistik ---------- */
+.section-meta { font-size: 12px; color: var(--text-muted); }
+.stat-card {
+  background: var(--surface);
+  border-radius: var(--card-radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.stat-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.stat-name { font-size: 14.5px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.stat-last { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.stat-last--recent { color: var(--brass); }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+.stat-cell { display: flex; justify-content: space-between; font-size: 12.5px; }
+.stat-cell span:first-child { color: var(--text-muted); }
+.stats-note { font-size: 11.5px; line-height: 1.5; margin: 2px 6px 0; }
+
+.export-card { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+.export-card-head { display: flex; gap: 12px; align-items: flex-start; }
+.export-card-icon {
+  width: 26px; height: 26px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: var(--brass);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.export-card-title { font-size: 14.5px; font-weight: 600; }
+.export-card-text { font-size: 12.5px; color: var(--text-secondary); line-height: 1.55; margin: 4px 0 0; }
+
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface-raised);
+  border: 1px solid var(--brass);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.file-card-icon {
+  width: 26px; height: 26px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: var(--brass);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.file-card-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.file-card-title { font-size: 13.5px; font-weight: 600; }
+.file-card-name { font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.export-done-actions { display: flex; gap: 10px; margin-top: 14px; }
+.export-done-actions .btn { flex: 1; padding: 13px; font-size: 14px; }
+
 /* ---------- Meny ---------- */
 .menu-group {
   background: var(--surface);
@@ -536,13 +597,13 @@ body {
 /* ---------- Bottenmeny ---------- */
 .bottom-nav {
   position: fixed;
-  left: 20px;
-  right: 20px;
+  left: 16px;
+  right: 16px;
   bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   max-width: 400px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   background: var(--surface);
   border-radius: 30px;
@@ -585,7 +646,7 @@ body {
   box-shadow: 0 0 0 2px var(--surface);
 }
 
-/* ---------- Toast ---------- */
+/* ---------- Meddelanden ---------- */
 .toast {
   position: fixed;
   top: calc(16px + env(safe-area-inset-top, 0px));
@@ -607,7 +668,7 @@ body {
 .toast-success { background: var(--success); color: #10240F; }
 .toast-error { background: var(--danger); color: #2A0D08; }
 
-/* ---------- Overlays / ark ---------- */
+/* ---------- Paneler ---------- */
 .overlay {
   position: fixed;
   inset: 0;
@@ -674,7 +735,7 @@ body {
 .weapon-manage-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 10px 4px;
   border-bottom: 1px solid var(--line-soft);
   font-size: 14.5px;
@@ -682,6 +743,29 @@ body {
 }
 .weapon-manage-row:last-child { border-bottom: none; }
 .weapon-manage-row.favorite { background: rgba(var(--brass-rgb), 0.08); }
+.weapon-manage-row.is-hidden .weapon-manage-name { color: var(--text-muted); text-decoration: line-through; }
+.weapon-hide-btn {
+  width: 28px; height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.weapon-hide-btn svg {
+  width: 18px; height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.weapon-hide-btn[aria-pressed="true"] { color: var(--brass); }
 .weapon-manage-row.dragging {
   position: relative;
   z-index: 30;
@@ -712,9 +796,8 @@ body {
 .weapon-manage-name {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 .weapon-remove-btn {
   width: 28px; height: 28px;
@@ -727,6 +810,18 @@ body {
   line-height: 1;
   cursor: pointer;
 }
+.weapon-box { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.weapon-box-input {
+  width: 44px;
+  text-align: center;
+  font-size: 13px;
+  padding: 6px 2px;
+  border: none;
+  border-radius: 7px;
+  background: var(--surface-high);
+  color: var(--text);
+}
+.weapon-box-unit { font-size: 11px; color: var(--text-muted); }
 .add-weapon-row { display: flex; gap: 8px; }
 .add-weapon-row .input { flex: 1; min-width: 0; }
 .add-weapon-btn { flex: 0 0 auto; padding: 0 18px !important; font-size: 14px; }

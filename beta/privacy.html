@@ -28,7 +28,7 @@
   <a href="index.html" style="color:#9A9DA3; text-decoration:none; font-size:14px;">&larr; Tillbaka till appen</a>
 
   <h1>Integritetspolicy — Skyttelogg</h1>
-  <p class="updated">Senast uppdaterad: 2026-09-24</p>
+  <p class="updated">Senast uppdaterad: 2026-09-26</p>
 
   <p>
     Skyttelogg är en liten, fristående webbapp för att logga träningspass och
@@ -40,16 +40,19 @@
   <p>
     Appen lagrar det du själv skriver in när du loggar ett pass: datum,
     aktivitetstyp (t.ex. Träning eller Tävling), vapengrupp/typ, antal skott,
-    plats eller förening, och en valfri notering. Appen samlar inte in
-    positionsdata, kontakter eller något annat om dig.
+    plats eller förening, och en valfri notering. Dessutom sparas din
+    vapenlista, med antal skott per ask för varje vapen. Utifrån detta räknar
+    appen fram statistik, t.ex. antal pass och skott per vapen. Appen samlar
+    inte in positionsdata, kontakter eller något annat om dig.
   </p>
 
   <h2>Var datan lagras</h2>
   <p>
     Dina loggade pass lagras i ett Google Kalkylark i <strong>din egen</strong>
     Google Drive — antingen ett ark appen skapar åt dig, eller ett befintligt
-    ark du själv väljer i Googles filväljare. Utvecklaren av appen har ingen
-    egen kopia av din data och kan inte se den.
+    ark du själv väljer i Googles filväljare. Statistiken sparas i en egen
+    flik i samma ark. Utvecklaren av appen har ingen egen kopia av din data
+    och kan inte se den.
   </p>
   <p>
     På din enhet (webbläsarens lokala lagring) sparar appen dessutom: vilket
@@ -63,8 +66,10 @@
     Appen ber om behörigheten <em>drive.file</em>. Den ger åtkomst
     <strong>endast</strong> till filer appen själv har skapat, eller som du
     uttryckligen väljer i Googles filväljare. Behörigheten används enbart för
-    att läsa och skriva dina pass och din vapenlista i det arket. Appen kan
-    inte se, söka i eller läsa något annat i din Google Drive.
+    att läsa och skriva dina pass, din vapenlista och din statistik i det
+    arket, samt för att kontrollera om arket ligger i papperskorgen så att
+    appen kan varna dig innan det raderas. Appen kan inte se, söka i eller
+    läsa något annat i din Google Drive.
   </p>
 
   <h2>Användning av data från Googles API:er</h2>
@@ -86,8 +91,8 @@
   <h2>Anonym användningsstatistik</h2>
   <p>
     Appen räknar, helt anonymt, hur många gånger den öppnas och hur många
-    gånger man loggar ett pass eller exporterar en PDF — bara för att
-    utvecklaren ska kunna se om appen används. Det sker via
+    gånger man loggar ett pass eller exporterar eller delar en PDF — bara för
+    att utvecklaren ska kunna se om appen används. Det sker via
     <a href="https://www.goatcounter.com" target="_blank">GoatCounter</a>,
     som inte använder cookies och inte kan koppla besök till en specifik
     person eller ditt Google-konto. Ingenting om <strong>vad</strong> du
@@ -100,8 +105,8 @@
     en sida hämtar filer från. Skyttelogg hämtar från:
   </p>
   <ul>
-    <li><strong>Google</strong> — inloggning, kalkylarket, filväljaren och
-      typsnitten (Google Fonts).</li>
+    <li><strong>Google</strong> — inloggning, kalkylarket, Drive, filväljaren
+      och typsnitten (Google Fonts).</li>
     <li><strong>cdnjs (Cloudflare)</strong> — PDF-verktyget, bara när du
       exporterar en PDF.</li>
     <li><strong>GoatCounter</strong> — den anonyma räkningen ovan.</li>
@@ -109,7 +114,8 @@
   </ul>
   <p>
     Ingen av dem får del av dina loggade pass, utom Google som lagrar ditt
-    eget kalkylark åt dig. Ingen data säljs eller delas vidare.
+    eget kalkylark åt dig. Ingen data säljs eller delas vidare. Delar du en
+    PDF via telefonens delningsmeny går den dit du själv väljer.
   </p>
 
   <h2>Radera din data</h2>
