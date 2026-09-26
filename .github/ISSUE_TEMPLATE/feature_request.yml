@@ -8,7 +8,7 @@ body:
     attributes:
       label: Vilken version kör du? (valfritt)
       description: Fylls i automatiskt om du kommer hit via appen. Står annars längst ned under Meny.
-      placeholder: 26.9.2 · beta
+      placeholder: Står längst ned under Meny
     validations:
       required: false
 
