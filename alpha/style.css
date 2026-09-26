@@ -603,6 +603,16 @@ body {
 .menu-row.has-problem .menu-sub { color: var(--danger); white-space: normal; }
 .menu-footer { text-align: center; margin: 18px 0 8px; }
 .menu-footer a { color: var(--brass); }
+.version-btn {
+  background: var(--surface-raised);
+  border: none;
+  border-radius: 6px;
+  padding: 2px 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.version-btn:active { background: var(--surface-high); }
 
 /* ---------- Bottenmeny ---------- */
 .bottom-nav {
