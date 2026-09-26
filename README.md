@@ -23,7 +23,7 @@ Drive. Appen har ingen egen server och ingen egen databas.
 
 ## Appens delar
 
-Appen har en bottenmeny med tre flikar:
+Appen har en bottenmeny med fyra flikar:
 
 - **Logga** — startvyn. Datum (dagens är förvalt), typ av pass, vapen och
   antal, plats, notering, **Logga pass**, och under det de senaste passen.
@@ -31,9 +31,13 @@ Appen har en bottenmeny med tre flikar:
 - **Kalender** — månadsvy med en prick per aktivitetstyp och dag (ljus =
   träning, större i accentfärg = tävling, grå ring = annat), antal dagar per
   typ för månaden, och passen för vald dag.
-- **Meny** — Exportera till PDF, Öppna kalkylarket, Inställningar (Vapen,
-  Tema, Ark), Rapportera bugg, Bjud på en kaffe, Integritetspolicy och
-  Logga ut.
+- **Statistik** — antal pass, skott och tävlingar sedan första loggade pass,
+  och per vapen: senast skjutet, pass och skott totalt och de senaste 12
+  månaderna. Här finns också **Exportera till PDF**, en sammanställning som
+  kan användas som underlag när föreningen ska intyga skytteaktivitet. Efter
+  exporten kan PDF:en delas direkt via telefonens delningsmeny eller sparas.
+- **Meny** — Öppna kalkylarket, Inställningar (Vapen, Tema, Ark),
+  Rapportera bugg, Bjud på en kaffe, Integritetspolicy och Logga ut.
 
 ## Värdens uppsättning (engångsjobb)
 
@@ -44,6 +48,7 @@ Appen har en bottenmeny med tre flikar:
 2. **APIs och tjänster → Bibliotek** → aktivera:
    - **Google Sheets API** (läsa/skriva i arken)
    - **Google Picker API** (filväljaren)
+   - **Google Drive API** (kontroll av om arket ligger i papperskorgen)
 3. **Google Auth Platform** (hette tidigare OAuth-samtyckesskärm):
    - **Branding**: appnamn "Skyttelogg", supportmejl, länk till
      integritetspolicyn (`.../skyttelogg/privacy.html`).
@@ -118,43 +123,70 @@ med slutet av adressen när arket är öppet i Google Sheets.
   Appen skriver efter **position**, inte rubriknamn — flytta inte kolumnerna.
 - **Vapenlista**: fliken "Vapen" skapas automatiskt med fyra standardvapen.
   Hanteras under **Meny → Vapen** (lägg till, ta bort, favorit, dra för att
-  sortera).
+  sortera, skott per ask, dölja). Kolumnerna är
+  `Namn | Favorit | Skott per ask | Dold`; saknas skott per ask räknas det
+  som 50. Dolda vapen syns inte när man loggar men finns kvar i statistiken. Tar man bort ett vapen som har
+  loggade pass ligger passen kvar och räknas under det gamla namnet.
+- **Statistik**: pass loggade i askar räknas om till skott med vapnets
+  askstorlek och visas som uppskattning (≈). Samma siffror skrivs som värden
+  till fliken "Statistik" i arket när statistiken öppnas i appen. Fliken ägs
+  av appen och skrivs om — bygg egna beräkningar i en annan flik.
+- **Skydd i arket**: flikarna Vapen och Statistik, samt rubrikraden i
+  Loggbok, har ett varningsskydd. Man kan fortfarande redigera, men Google
+  Sheets ber om bekräftelse först. Loggbokens rader går att ändra fritt.
+  Bredvid vapenlistan (kolumn F) förklaras vad kolumnerna betyder.
 - **Offline-loggning**: utan täckning (vanligt inomhus på banor) eller om
   sessionen gått ut sparas passet lokalt och skickas automatiskt senare.
+  Samma sak gäller om Google tillfälligt begränsar antalet anrop (fel 429);
+  då görs ett nytt försök efter en minut.
   "X pass väntar på synk" visas ovanför Logga pass så länge något ligger i kö.
 - **Utgången session**: Googles inloggning gäller ungefär en timme. Efter
   det visas "Sessionen gick ut" — tryck på den för att logga in igen.
 - **Ark som slutat svara**: om arket raderas eller åtkomsten försvinner
   under en session tänds en röd prick på **Meny**, och **Ark**-raden visar
-  vad som behöver göras. Obs: ett ark som bara ligger i papperskorgen
-  fungerar fortfarande och ger ingen varning.
+  vad som behöver göras. Samma varning visas om arket ligger i
+  papperskorgen i Drive, eftersom Google då raderar det efter 30 dagar.
 - **Utloggning** kräver bekräftelse, och nämner om det finns pass i kö.
 - **Säker redigering**: innan ett pass sparas om eller raderas kontrollerar
   appen att raden i arket fortfarande är samma pass som visas.
 - **PDF-sammanställning** per vapengrupp (antal pass, varav tävling, totalt
   antal askar/skott), användbar som underlag för aktivitetsintyg.
 
+## Versioner och kanaler
+
+- **Beta** — den publicerade appen i repots rot. Används av alla, fungerar,
+  men utvecklas fortfarande. Märks med `BETA` bredvid appnamnet.
+- **Alpha** — testkanalen i mappen `alpha/`. Nytt testas här först av
+  utvecklaren och ett par testare. Märks med `ALPHA` i varningsfärg.
+
+Versionen skrivs som `ÅÅ.M.N` (år, månad, löpnummer inom månaden), t.ex.
+`26.9.1`, och står i `APP_VERSION` överst i `app.js`. Den visas längst ned i
+Meny, t.ex. `26.9.1 · alpha`. Samma nummer gäller i båda kanalerna, så en
+version flyttas från alpha till beta utan att någon fil ändras. Ange
+versionen i buggrapporter.
+
+`PUBLIC_BETA` i `app.js` styr beta-märkningen och sätts till `false` när
+appen anses färdig.
+
 ## Uppdatera appen
 
-Redigera en fil på github.com och committa — sidan uppdateras inom någon
-minut, eftersom appen alltid hämtar färska filer från nätet först.
-**Öppna filen igen efteråt och kontrollera** att ändringen faktiskt sparades;
-en redigering i fel gren ger inget felmeddelande.
+1. Räkna upp `APP_VERSION` i `app.js` (även för små rättningar).
+2. Lägg de ändrade filerna i `alpha/`. Mappen innehåller också egna kopior
+   av `config.js`, `privacy.html`, `manifest.json` och `icons/`.
+3. Öppna `https://användarnamn.github.io/reponamn/alpha/` i webbläsaren
+   (installera inte på hemskärmen) och kontrollera att Meny visar rätt
+   version innan testet börjar. Samma domän gör att inloggning och Picker
+   fungerar utan ändringar i Console, och alpha hittar användarens vanliga
+   ark.
+4. När allt fungerar: kopiera de ändrade filerna till roten. Meny i den
+   publicerade appen ska då visa samma version, med `beta`.
 
-Vid större releaser: höj `CACHE_VERSION` i `sw.js`, så rensas den gamla
-offline-reserven.
+**Öppna varje fil igen efter uppladdning och kontrollera** att ändringen
+faktiskt sparades; en redigering i fel gren ger inget felmeddelande.
 
-### Testa större ändringar i beta först
-
-1. Lägg de ändrade filerna i mappen `beta/`, tillsammans med kopior av
-   `config.js`, `privacy.html` och `icons/`.
-2. Testa på `https://användarnamn.github.io/reponamn/beta/` — öppna i
-   webbläsaren, installera inte på hemskärmen. Samma domän gör att
-   inloggning och Picker fungerar utan ändringar i Console, och betan
-   hittar användarens vanliga ark.
-3. När allt fungerar: kopiera de ändrade filerna till roten. Behåll
-   `beta/` som testmiljö till nästa gång — då behöver bara de ändrade
-   filerna läggas dit.
+Service workern registreras med versionen i adressen och ber alltid servern
+bekräfta att filerna är aktuella, så en ny version slår igenom direkt och
+den gamla offline-reserven rensas automatiskt.
 
 ## Köra en helt egen, fristående kopia
 
@@ -173,6 +205,8 @@ eller `PICKER_API_KEY`, även om de ser kompletta ut.
   **Test users** — eller publicera appen (In production).
 - **"Google Sheets/Picker API has not been used in project… or it is
   disabled"**: aktivera API:et under **Bibliotek** och vänta en minut.
+  Är Drive API inte aktiverat fungerar appen ändå, men varningen för ark i
+  papperskorgen uteblir.
 - **Drive-knappen syns inte**: `PICKER_API_KEY` är tom i `config.js`.
 - **Filväljaren öppnas men valt ark ger "Appen har inte åtkomst"**: kontrollera
   att Picker API är aktiverat och att API-nyckeln är begränsad till rätt
@@ -187,11 +221,9 @@ eller `PICKER_API_KEY`, även om de ser kompletta ut.
   fungerar länk/ID bara för ark appen redan kommer åt. Använd Drive-knappen.
 - **"This app cannot be installed"**: `manifest.json` hittar inte ikonerna —
   se GitHub Pages punkt 1.
-- **En uppdatering syns inte**: testa i ett inkognitofönster. Syns den där
-  är det cache — stäng och öppna appen igen.
+- **En uppdatering syns inte**: jämför versionen längst ned i Meny med den
+  som laddades upp. Stäng alla flikar med appen och öppna igen.
 
 ## Kända begränsningar
 
-- Ett ark som ligger i papperskorgen i Drive fungerar tills Google raderar
-  det automatiskt (efter 30 dagar) — appen varnar inte för det ännu.
 - Swish-numret för kaffeknappen är publikt i repot. Medvetet val.
