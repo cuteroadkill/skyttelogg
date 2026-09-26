@@ -6,6 +6,16 @@ fått, från första versionen till idag.
 
 ---
 
+## 26.9.6 · september 2026
+
+- 🔁 **Askar eller skott per vapen** – välj enhet direkt på varje vapen, och
+  blanda fritt i samma pass. Appen minns vad du brukar använda.
+- 🔢 Askar visar ungefär hur många skott det blir.
+- 📅 **Idag, Igår eller valfritt datum** med ett tryck.
+- ➕ **Annat vapen** ligger hopfällt tills du behöver det.
+- ✅ **Logga-knappen alltid inom räckhåll** och visar hur många vapen du
+  loggar.
+
 ## 26.9.5 · september 2026
 
 - 🔓 **Förblir inloggad i upp till en timme** – öppna appen igen utan att

@@ -85,12 +85,11 @@
 
         <h2 class="section-title">Nytt pass</h2>
         <div class="card">
-          <div class="field-group">
-            <label for="dateInput">Datum</label>
-            <div class="date-wrap">
-              <button type="button" id="dateDisplay" class="input mono date-display"></button>
-              <input type="date" id="dateInput" class="date-input-hidden" tabindex="-1" aria-hidden="true">
-            </div>
+          <div class="date-chips" role="group" aria-label="Datum">
+            <button type="button" id="dateTodayBtn" class="date-chip active">Idag</button>
+            <button type="button" id="dateYesterdayBtn" class="date-chip">Igår</button>
+            <button type="button" id="datePickBtn" class="date-chip">Välj datum</button>
+            <input type="date" id="dateInput" class="date-input-hidden" tabindex="-1" aria-hidden="true">
           </div>
 
           <div class="mode-switch" role="tablist" aria-label="Typ av pass">
@@ -108,15 +107,8 @@
 
         <!-- Vapenlista -->
         <div id="weaponBlock">
-          <div class="section-row">
-            <h2 class="section-title">Vapen</h2>
-            <div class="unit-switch" role="tablist" aria-label="Mängdenhet">
-              <button type="button" class="unit-btn active" data-unit="ask">Askar</button>
-              <button type="button" class="unit-btn" data-unit="skott">Skott</button>
-            </div>
-          </div>
-          <div id="weaponList" class="weapon-grid" data-unit="ask"></div>
-          <p id="unitHint" class="hint muted">Mängd anges i askar per vapengrupp</p>
+          <h2 class="section-title">Vapen</h2>
+          <div id="weaponList" class="weapon-grid"></div>
         </div>
 
         <h2 class="section-title">Detaljer</h2>
@@ -132,7 +124,7 @@
         </div>
 
         <div id="queueRow" class="queue-row hidden"></div>
-        <button id="logBtn" class="btn btn-primary btn-wide log-btn">Logga pass</button>
+        <button id="logBtn" class="btn btn-primary log-btn" disabled>Välj vapen för att logga</button>
 
         <!-- Senaste loggningar -->
         <div class="section-row section-row--spaced">

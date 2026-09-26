@@ -8,7 +8,7 @@
 // ÅÅ.M.N: år, månad och löpnummer inom månaden. Räknas upp vid varje
 // leverans, även rättningar. Samma nummer i alpha och beta: uppflyttning
 // till den publicerade appen görs utan att ändra någon fil.
-const APP_VERSION = "26.9.5";
+const APP_VERSION = "26.9.6";
 // Den publicerade appen märks som beta så länge den utvecklas. Sätts till
 // false när appen anses färdig.
 const PUBLIC_BETA = true;
@@ -75,6 +75,7 @@ const LOCATION_KEY = "skyttelogg_location";
 const SESSION_KEY = "skyttelogg_session";  // sparad inloggning, högst en timme
 const KNOWN_KEY = "skyttelogg_known";      // inloggad förut på enheten, ej utloggad
 const NEWS_SEEN_KEY = "skyttelogg_news_seen"; // senaste version vars nyheter visats
+const UNIT_PREF_KEY = "skyttelogg_units";      // senast använd enhet per vapennamn
 
 let currentThemeId = "brass";
 
@@ -205,8 +206,7 @@ function loadScriptOnce(src) {
 window.addEventListener("load", () => {
   renderVersion();
   loadSavedTheme();
-  setDateFor("dateInput", "dateDisplay", todayLocalStr());
-  wireDatePicker("dateInput", "dateDisplay");
+  setLogDate("today");
   wireDatePicker("editDateInput", "editDateDisplay");
   wireDatePicker("exportFromInput", "exportFromDisplay");
   wireDatePicker("exportToInput", "exportToDisplay");
@@ -392,8 +392,18 @@ function wireStaticEvents() {
   document.querySelectorAll(".mode-btn").forEach(btn => {
     btn.addEventListener("click", () => setMode(btn.dataset.mode));
   });
-  document.querySelectorAll(".unit-btn").forEach(btn => {
-    btn.addEventListener("click", () => setAmmoUnit(btn.dataset.unit));
+  document.getElementById("activityTypeInput").addEventListener("input", updateLogButton);
+
+  // Datumchips
+  document.getElementById("dateTodayBtn").addEventListener("click", () => setLogDate("today"));
+  document.getElementById("dateYesterdayBtn").addEventListener("click", () => setLogDate("yesterday"));
+  document.getElementById("datePickBtn").addEventListener("click", () => {
+    const input = document.getElementById("dateInput");
+    if (input.showPicker) input.showPicker();
+    else { input.focus(); input.click(); }
+  });
+  document.getElementById("dateInput").addEventListener("change", e => {
+    if (e.target.value) setLogDate("custom", e.target.value);
   });
 
   // Bottenmeny
@@ -1567,29 +1577,228 @@ async function trySyncQueue() {
   }
 }
 
-// ---------- Vapenlista (UI) ----------
+// ---------- Datum för nytt pass ----------
+// Idag · Igår · Välj datum. Ett eget datum som råkar vara idag eller igår
+// markerar motsvarande chip.
+function shortDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const s = `${d}/${m}`;
+  return y === new Date().getFullYear() ? s : `${s} ${y}`;
+}
+
+function setLogDate(kind, iso) {
+  const today = todayLocalStr();
+  const y = new Date();
+  y.setDate(y.getDate() - 1);
+  const yesterday = localIsoDate(y);
+  if (kind === "today") iso = today;
+  if (kind === "yesterday") iso = yesterday;
+  if (iso === today) kind = "today";
+  else if (iso === yesterday) kind = "yesterday";
+
+  document.getElementById("dateInput").value = iso;
+  document.getElementById("dateTodayBtn").innerHTML = `Idag <span class="mono">${shortDate(today)}</span>`;
+  const pick = document.getElementById("datePickBtn");
+  pick.innerHTML = kind === "custom" ? `<span class="mono">${shortDate(iso)}</span>` : "Välj datum";
+  document.getElementById("dateTodayBtn").classList.toggle("active", kind === "today");
+  document.getElementById("dateYesterdayBtn").classList.toggle("active", kind === "yesterday");
+  pick.classList.toggle("active", kind === "custom");
+}
+
+// ---------- Vapenkort ----------
+// Varje valt vapen har egen enhet: askar (stegare, ½-steg) eller skott
+// (sifferfält). Förval vid val: senast använda enhet för vapnet, härledd ur
+// redan inlästa loggrader, annars sparad lokalt, annars askar. Radformatet i
+// arket är oförändrat ("2 askar", "½ ask", "20 skott").
+const UNIT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>';
+
+function chipControlsHtml() {
+  return `
+    <div class="chip-controls">
+      <div class="chip-amount">
+        <span class="chip-stepper">
+          <button type="button" class="step-btn" data-delta="-0.5" aria-label="Minska">−</button>
+          <span class="amount mono" data-val="1">1</span>
+          <button type="button" class="step-btn" data-delta="0.5" aria-label="Öka">+</button>
+        </span>
+        <input type="number" class="shots-input mono" inputmode="numeric" min="1" placeholder="Antal" aria-label="Antal skott">
+        <button type="button" class="unit-pill" aria-label="Byt enhet"><span class="unit-text">askar</span>${UNIT_ICON}</button>
+      </div>
+      <div class="chip-approx mono"></div>
+    </div>`;
+}
+
 function buildWeaponList() {
   const container = document.getElementById("weaponList");
   container.innerHTML = "";
-
   weaponsList.filter(w => !w.hidden).forEach(w => container.appendChild(weaponChip(w.name)));
 
-  const chip = document.createElement("label");
-  chip.className = "weapon-chip weapon-chip--custom";
+  // Annat vapen: hopfällt tills man trycker
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "custom-open";
+  open.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>Annat vapen';
+  container.appendChild(open);
+
+  const chip = document.createElement("div");
+  chip.className = "weapon-chip weapon-chip--custom hidden";
   chip.dataset.weapon = "";
   chip.innerHTML = `
-    <input type="checkbox" class="chip-input">
-    <input type="text" class="input custom-name" placeholder="+ Annat vapen...">
-    <span class="chip-stepper">
-      <button type="button" class="step-btn" data-delta="-0.5">−</button>
-      <span class="amount mono" data-val="1">1</span>
-      <button type="button" class="step-btn" data-delta="0.5">+</button>
-    </span>
-    <span class="chip-shots">
-      <input type="number" class="shots-input mono" inputmode="numeric" min="0" placeholder="Antal">
-    </span>`;
+    <div class="custom-head">
+      <input type="text" class="input custom-name" placeholder="Vapnets namn" aria-label="Annat vapen">
+      <button type="button" class="custom-close" aria-label="Stäng annat vapen">×</button>
+    </div>` + chipControlsHtml();
   container.appendChild(chip);
-  wireChip(chip, true);
+  wireCustomChip(open, chip);
+  updateLogButton();
+}
+
+function weaponChip(name) {
+  const chip = document.createElement("div");
+  chip.className = "weapon-chip";
+  chip.dataset.weapon = name;
+  chip.innerHTML = `
+    <button type="button" class="chip-toggle" aria-pressed="false">
+      <span class="chip-label">${escapeHtml(name)}</span>
+    </button>` + chipControlsHtml();
+  chip.querySelector(".chip-toggle").addEventListener("click", () => {
+    setChipSelected(chip, !chip.classList.contains("selected"));
+  });
+  wireChipControls(chip);
+  return chip;
+}
+
+function wireCustomChip(open, chip) {
+  const name = chip.querySelector(".custom-name");
+  open.addEventListener("click", () => {
+    open.classList.add("hidden");
+    chip.classList.remove("hidden");
+    chip.classList.add("selected"); // kontrollerna syns; räknas som valt först med namn
+    setChipUnit(chip, preferredUnit(""));
+    name.focus();
+    updateLogButton();
+  });
+  name.addEventListener("input", updateLogButton);
+  chip.querySelector(".custom-close").addEventListener("click", () => {
+    collapseCustomChip(chip, open);
+    updateLogButton();
+  });
+  wireChipControls(chip);
+}
+
+function collapseCustomChip(chip, open) {
+  chip.querySelector(".custom-name").value = "";
+  resetChipAmount(chip);
+  chip.classList.remove("selected");
+  chip.classList.add("hidden");
+  (open || document.querySelector(".custom-open")).classList.remove("hidden");
+}
+
+function wireChipControls(chip) {
+  const amountEl = chip.querySelector(".amount");
+  chip.querySelectorAll(".step-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      let val = parseFloat(amountEl.dataset.val);
+      val = Math.min(10, Math.max(0.5, val + parseFloat(btn.dataset.delta)));
+      amountEl.dataset.val = val;
+      amountEl.textContent = fractionText(val);
+      updateApprox(chip);
+    });
+  });
+  chip.querySelector(".unit-pill").addEventListener("click", () => {
+    setChipUnit(chip, chip.dataset.qtyUnit === "skott" ? "ask" : "skott");
+    if (chip.dataset.qtyUnit === "skott") chip.querySelector(".shots-input").focus();
+  });
+}
+
+function setChipSelected(chip, on) {
+  chip.classList.toggle("selected", on);
+  chip.querySelector(".chip-toggle").setAttribute("aria-pressed", on ? "true" : "false");
+  if (on) setChipUnit(chip, preferredUnit(chip.dataset.weapon));
+  else resetChipAmount(chip);
+  updateLogButton();
+}
+
+// Byter enhet och återställer mängden (1 ask / tomt skottfält).
+function setChipUnit(chip, unit) {
+  chip.dataset.qtyUnit = unit;
+  chip.querySelector(".unit-text").textContent = unit === "skott" ? "skott" : "askar";
+  resetChipAmount(chip);
+}
+
+function resetChipAmount(chip) {
+  const amountEl = chip.querySelector(".amount");
+  amountEl.dataset.val = 1;
+  amountEl.textContent = "1";
+  chip.querySelector(".shots-input").value = "";
+  updateApprox(chip);
+}
+
+// "≈ N skott" under stegaren, bara för vapen med askstorlek i listan.
+function updateApprox(chip) {
+  const el = chip.querySelector(".chip-approx");
+  const key = normalizeWeaponName(chip.dataset.weapon);
+  const w = key && weaponsList.find(x => normalizeWeaponName(x.name) === key);
+  if (!w) { el.textContent = ""; return; }
+  const val = parseFloat(chip.querySelector(".amount").dataset.val);
+  el.textContent = `≈ ${formatCount(val * (w.box || DEFAULT_BOX_SIZE), false)} skott`;
+}
+
+function loadUnitPrefs() {
+  try { return JSON.parse(localStorage.getItem(UNIT_PREF_KEY) || "{}") || {}; }
+  catch (e) { return {}; }
+}
+
+function saveUnitPrefs(rows) {
+  const prefs = loadUnitPrefs();
+  rows.forEach(r => {
+    const key = normalizeWeaponName(r[2]);
+    const unit = parseAmount(r[3]).unit;
+    if (key && unit) prefs[key] = unit;
+  });
+  try { localStorage.setItem(UNIT_PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* ignoreras */ }
+}
+
+// Senast använda enhet: inlästa loggrader (nyast först) → lokalt sparad → askar.
+function preferredUnit(name) {
+  const key = normalizeWeaponName(name);
+  if (!key) return "ask";
+  const fromRows = list => {
+    for (const row of list) {
+      if (normalizeWeaponName(row[2]) !== key) continue;
+      const unit = parseAmount(row[3]).unit;
+      if (unit) return unit;
+    }
+    return null;
+  };
+  let unit = null;
+  if (allRows) unit = fromRows(allRows.map(r => r.row));
+  if (!unit) {
+    const cached = Object.keys(rowCache).map(Number).sort((a, b) => a - b).map(n => rowCache[n]);
+    unit = fromRows(cached);
+  }
+  return unit || loadUnitPrefs()[key] || "ask";
+}
+
+// ---------- Logga-knappen ----------
+let logInProgress = false;
+
+function selectedWeaponChips() {
+  return Array.from(document.querySelectorAll("#weaponList .weapon-chip.selected")).filter(chip =>
+    !chip.classList.contains("weapon-chip--custom") ||
+    chip.querySelector(".custom-name").value.trim().length > 0);
+}
+
+function updateLogButton() {
+  const btn = document.getElementById("logBtn");
+  if (currentMode === "training" || currentMode === "competition") {
+    const n = selectedWeaponChips().length;
+    btn.textContent = n ? `Logga pass · ${n} vapen` : "Välj vapen för att logga";
+    btn.disabled = logInProgress || n === 0;
+  } else {
+    btn.textContent = "Logga pass";
+    btn.disabled = logInProgress || !document.getElementById("activityTypeInput").value.trim();
+  }
 }
 
 // ---------- Tema ----------
@@ -2008,58 +2217,6 @@ async function removeWeapon(index) {
   await persistAndRefreshWeapons();
 }
 
-function weaponChip(name) {
-  const chip = document.createElement("label");
-  chip.className = "weapon-chip";
-  chip.dataset.weapon = name;
-  chip.innerHTML = `
-    <input type="checkbox" class="chip-input">
-    <span class="chip-label">${escapeHtml(name)}</span>
-    <span class="chip-stepper">
-      <button type="button" class="step-btn" data-delta="-0.5">−</button>
-      <span class="amount mono" data-val="1">1</span>
-      <button type="button" class="step-btn" data-delta="0.5">+</button>
-    </span>
-    <span class="chip-shots">
-      <input type="number" class="shots-input mono" inputmode="numeric" min="0" placeholder="Antal">
-    </span>`;
-  wireChip(chip, false);
-  return chip;
-}
-
-function wireChip(chip, isCustom) {
-  const cb = chip.querySelector(".chip-input");
-  const amountEl = chip.querySelector(".amount");
-  const buttons = chip.querySelectorAll(".step-btn");
-  const shotsInput = chip.querySelector(".shots-input");
-
-  if (isCustom) {
-    const nameInput = chip.querySelector(".custom-name");
-    // Skriver man i fältet räknas raden som vald
-    nameInput.addEventListener("click", e => e.stopPropagation());
-    nameInput.addEventListener("input", () => {
-      cb.checked = nameInput.value.trim().length > 0;
-    });
-  }
-
-  shotsInput.addEventListener("click", e => e.stopPropagation());
-  shotsInput.addEventListener("focus", () => { cb.checked = true; });
-
-  buttons.forEach(btn => {
-    btn.addEventListener("click", e => {
-      e.preventDefault(); // hindra att klicket också togglar kryssrutan via label
-      if (!cb.checked) {
-        cb.checked = true;
-        if (parseFloat(btn.dataset.delta) < 0) return;
-      }
-      let val = parseFloat(amountEl.dataset.val);
-      val = Math.min(10, Math.max(0.5, val + parseFloat(btn.dataset.delta)));
-      amountEl.dataset.val = val;
-      amountEl.textContent = fractionText(val);
-    });
-  });
-}
-
 function fractionText(v) {
   if (v === 0.5) return "½";
   if (v % 1 === 0.5) return Math.floor(v) + "½";
@@ -2067,20 +2224,6 @@ function fractionText(v) {
 }
 function amountText(v) {
   return fractionText(v) + (v > 1 ? " askar" : " ask");
-}
-
-// ---------- Mängdenhet (askar / skott) ----------
-let currentAmmoUnit = "ask";
-
-function setAmmoUnit(unit) {
-  currentAmmoUnit = unit;
-  document.getElementById("weaponList").dataset.unit = unit;
-  document.querySelectorAll(".unit-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.unit === unit);
-  });
-  document.getElementById("unitHint").textContent = unit === "ask"
-    ? "Mängd anges i askar per vapengrupp"
-    : "Mängd anges i exakt antal skott per vapengrupp";
 }
 
 // ---------- Läge ----------
@@ -2094,6 +2237,7 @@ function setMode(mode) {
   const usesWeapons = (mode === "training" || mode === "competition");
   document.getElementById("weaponBlock").classList.toggle("hidden", !usesWeapons);
   document.getElementById("otherActivityBlock").classList.toggle("hidden", usesWeapons);
+  updateLogButton();
 }
 
 // ---------- Toast ----------
@@ -2112,18 +2256,11 @@ function showToast(msg, isError) {
 function resetForm() {
   document.getElementById("noteInput").value = "";
   document.getElementById("activityTypeInput").value = "";
-  setDateFor("dateInput", "dateDisplay", todayLocalStr());
-  document.querySelectorAll(".weapon-chip").forEach(chip => {
-    chip.querySelector(".chip-input").checked = false;
-    const amountEl = chip.querySelector(".amount");
-    amountEl.dataset.val = 1;
-    amountEl.textContent = "1";
-    const custom = chip.querySelector(".custom-name");
-    if (custom) custom.value = "";
-    const shotsInput = chip.querySelector(".shots-input");
-    if (shotsInput) shotsInput.value = "";
+  setLogDate("today");
+  document.querySelectorAll("#weaponList .weapon-chip").forEach(chip => {
+    if (chip.classList.contains("weapon-chip--custom")) collapseCustomChip(chip);
+    else if (chip.classList.contains("selected")) setChipSelected(chip, false);
   });
-  setAmmoUnit("ask");
   setMode("training");
 }
 
@@ -2543,18 +2680,16 @@ async function submitLog() {
     let customError = false;
     let shotsError = false;
 
-    document.querySelectorAll(".weapon-chip").forEach(chip => {
-      const cb = chip.querySelector(".chip-input");
-      if (!cb.checked) return;
+    document.querySelectorAll("#weaponList .weapon-chip.selected").forEach(chip => {
       let weapon = chip.dataset.weapon;
       const custom = chip.querySelector(".custom-name");
       if (custom) {
         weapon = custom.value.trim();
-        if (!weapon) { customError = true; return; }
+        if (!weapon) return; // utfällt men tomt räknas inte som valt
       }
 
       let amountVal;
-      if (currentAmmoUnit === "ask") {
+      if (chip.dataset.qtyUnit !== "skott") {
         const val = parseFloat(chip.querySelector(".amount").dataset.val);
         amountVal = amountText(val);
       } else {
@@ -2576,7 +2711,9 @@ async function submitLog() {
   }
 
   localStorage.setItem(LOCATION_KEY, location);
+  saveUnitPrefs(rows);
 
+  logInProgress = true;
   logBtn.disabled = true;
   showToast("Loggar...", false);
 
@@ -2602,7 +2739,8 @@ async function submitLog() {
     } else {
       showToast("Ett fel uppstod: " + e.message, true);
     }
-    logBtn.disabled = false;
+    logInProgress = false;
+    updateLogButton();
     return;
   }
 
@@ -2611,5 +2749,6 @@ async function submitLog() {
   trackEvent("pass-loggat");
   resetForm();
   refreshData();
-  logBtn.disabled = false;
+  logInProgress = false;
+  updateLogButton();
 }
