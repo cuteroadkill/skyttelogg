@@ -8,7 +8,7 @@
 // ÅÅ.M.N: år, månad och löpnummer inom månaden. Räknas upp vid varje
 // leverans, även rättningar. Samma nummer i alpha och beta: uppflyttning
 // till den publicerade appen görs utan att ändra någon fil.
-const APP_VERSION = "26.9.4";
+const APP_VERSION = "26.9.5";
 // Den publicerade appen märks som beta så länge den utvecklas. Sätts till
 // false när appen anses färdig.
 const PUBLIC_BETA = true;
@@ -299,9 +299,9 @@ function showStartScreen() {
   document.getElementById("signedOutView").classList.remove("hidden");
 }
 
-// Splashen visas minst 1,5 s så att animationen (ca 1,2 s) hinner klart,
+// Splashen visas minst 2 s så att animationen (ca 1,5 s) hinner klart,
 // men aldrig längre än laddningen när den tar längre tid. Tryck hoppar över.
-const SPLASH_MIN_MS = 1500;
+const SPLASH_MIN_MS = 2000;
 let splashMinUntil = 0;
 let splashHidePending = false;
 
