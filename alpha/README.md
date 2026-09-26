@@ -140,8 +140,12 @@ med slutet av adressen när arket är öppet i Google Sheets.
   Samma sak gäller om Google tillfälligt begränsar antalet anrop (fel 429);
   då görs ett nytt försök efter en minut.
   "X pass väntar på synk" visas ovanför Logga pass så länge något ligger i kö.
-- **Utgången session**: Googles inloggning gäller ungefär en timme. Efter
-  det visas "Sessionen gick ut" — tryck på den för att logga in igen.
+- **Inloggning**: Googles inloggning gäller ungefär en timme och sparas på
+  enheten under den tiden, så appen kan öppnas igen utan ny inloggning (med
+  en kort startanimation medan passen hämtas). Därefter räcker ett tryck på
+  **Fortsätt**. Går inloggningen ut medan appen är öppen visas "Sessionen
+  gick ut" — tryck på den för att fortsätta. Utloggning tar bort den sparade
+  inloggningen.
 - **Ark som slutat svara**: om arket raderas eller åtkomsten försvinner
   under en session tänds en röd prick på **Meny**, och **Ark**-raden visar
   vad som behöver göras. Samma varning visas om arket ligger i
