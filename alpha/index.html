@@ -243,6 +243,12 @@
 
         <h2 class="section-title section-title--spaced">Om appen</h2>
         <div class="menu-group">
+          <button type="button" id="menuNewsBtn" class="menu-row">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"></path></svg>
+            <span class="menu-label">Nyheter</span>
+            <span id="menuNewsBadge" class="menu-new hidden">NY</span>
+            <span class="menu-chev" aria-hidden="true">›</span>
+          </button>
           <a id="menuBugLink" href="#" target="_blank" rel="noopener" class="menu-row hidden">
             <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2l1.5 2.5M16 2l-1.5 2.5"></path><rect x="7" y="5" width="10" height="15" rx="5"></rect><line x1="12" y1="10" x2="12" y2="20"></line><path d="M3 9l4 2M21 9l-4 2M3 15h4M21 15h-4M4 20l3-2M20 20l-3-2"></path></svg>
             <span class="menu-label">Rapportera bugg</span>
@@ -456,6 +462,19 @@
 
         <div class="overlay-actions">
           <button type="button" id="setupSignOutBtn" class="btn btn-secondary">Logga ut</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nyheter -->
+    <div id="newsOverlay" class="overlay hidden">
+      <div class="overlay-panel">
+        <h2>Nyheter</h2>
+        <div id="newsContent" class="news-content">
+          <p class="muted small">Laddar...</p>
+        </div>
+        <div class="overlay-actions">
+          <button type="button" id="newsCloseBtn" class="btn btn-secondary">Stäng</button>
         </div>
       </div>
     </div>
