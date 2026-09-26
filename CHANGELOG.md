@@ -6,6 +6,11 @@ fått, från första versionen till idag.
 
 ---
 
+## 26.9.7 · september 2026
+
+- 📰 **Nyheter** visar en version i taget – tryck på en äldre för att fälla
+  ut den. Stäng-knappen finns alltid nära till hands.
+
 ## 26.9.6 · september 2026
 
 - 🔁 **Askar eller skott per vapen** – välj enhet direkt på varje vapen, och

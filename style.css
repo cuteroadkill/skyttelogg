@@ -695,16 +695,43 @@ body:has(#splash:not(.hidden)) .topbar { display: none; }
   background: rgba(var(--brass-rgb), 0.16);
   color: var(--brass);
 }
-.news-content h3 {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--brass);
-  margin: 20px 0 8px;
-}
-.news-content h3:first-child { margin-top: 0; }
 .news-content ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .news-content li { font-size: 14px; line-height: 1.5; color: var(--text); }
 .news-content strong { font-weight: 600; }
+.news-content { display: flex; flex-direction: column; gap: 6px; }
+.news-item { background: var(--surface-raised); border-radius: 12px; }
+.news-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 14px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+.news-item.open .news-head { color: var(--brass); }
+.news-chev { font-size: 18px; transition: transform 0.25s ease; }
+.news-item.open .news-chev { transform: rotate(90deg); }
+/* Mjuk höjdanimation: raden går från 0fr till 1fr */
+.news-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.28s ease; }
+.news-item.open .news-body { grid-template-rows: 1fr; }
+.news-inner { overflow: hidden; }
+.news-inner ul { padding: 0 14px 14px; }
+/* Stäng alltid nåbar i botten av panelen */
+#newsOverlay .overlay-actions {
+  position: sticky;
+  bottom: calc(-24px - env(safe-area-inset-bottom, 0px));
+  margin: 14px -20px calc(-24px - env(safe-area-inset-bottom, 0px));
+  padding: 12px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+}
 
 /* ---------- Meny ---------- */
 .menu-group {

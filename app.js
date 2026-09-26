@@ -8,7 +8,7 @@
 // ÅÅ.M.N: år, månad och löpnummer inom månaden. Räknas upp vid varje
 // leverans, även rättningar. Samma nummer i alpha och beta: uppflyttning
 // till den publicerade appen görs utan att ändra någon fil.
-const APP_VERSION = "26.9.6";
+const APP_VERSION = "26.9.7";
 // Den publicerade appen märks som beta så länge den utvecklas. Sätts till
 // false när appen anses färdig.
 const PUBLIC_BETA = true;
@@ -1904,6 +1904,8 @@ function closeThemeOverlay() {
 // Innehållet hämtas från CHANGELOG.md bredvid appen, så att changeloggen på
 // GitHub och i appen alltid är samma text. Stöder det som filen använder:
 // ## rubriker, - punkter (med indragna fortsättningsrader) och **fetstil**.
+// Varje rubrik blir ett hopfällbart avsnitt; bara ett är öppet åt gången,
+// från början det senaste.
 let newsLoaded = false;
 
 function renderChangelog(md) {
@@ -1914,10 +1916,18 @@ function renderChangelog(md) {
   const flushItem = () => { if (item !== null) { html += `<li>${inline(item)}</li>`; item = null; } };
   const closeList = () => { flushItem(); if (inList) { html += "</ul>"; inList = false; } };
 
+  let sections = 0;
+  const closeSection = () => { closeList(); if (sections) html += "</div></div></div>"; };
+
   md.split(/\r?\n/).forEach(line => {
     if (/^## /.test(line)) {
-      closeList();
-      html += `<h3>${inline(line.slice(3).trim())}</h3>`;
+      closeSection();
+      const open = sections === 0;
+      sections++;
+      html += `<div class="news-item${open ? " open" : ""}">` +
+        `<button type="button" class="news-head" aria-expanded="${open}">` +
+        `<span>${inline(line.slice(3).trim())}</span><span class="news-chev" aria-hidden="true">›</span></button>` +
+        `<div class="news-body"><div class="news-inner">`;
     } else if (/^- /.test(line)) {
       flushItem();
       if (!inList) { html += "<ul>"; inList = true; }
@@ -1928,8 +1938,26 @@ function renderChangelog(md) {
       flushItem();
     }
   });
-  closeList();
+  closeSection();
   return html;
+}
+
+function wireNewsAccordion(box) {
+  box.querySelectorAll(".news-head").forEach(head => {
+    head.addEventListener("click", () => {
+      const item = head.parentElement;
+      const opening = !item.classList.contains("open");
+      box.querySelectorAll(".news-item.open").forEach(other => {
+        other.classList.remove("open");
+        other.querySelector(".news-head").setAttribute("aria-expanded", "false");
+      });
+      if (opening) {
+        item.classList.add("open");
+        head.setAttribute("aria-expanded", "true");
+        setTimeout(() => head.scrollIntoView({ block: "nearest", behavior: "smooth" }), 280);
+      }
+    });
+  });
 }
 
 async function openNewsOverlay() {
@@ -1942,6 +1970,7 @@ async function openNewsOverlay() {
     const res = await fetch("CHANGELOG.md");
     if (!res.ok) throw new Error("HTTP " + res.status);
     box.innerHTML = renderChangelog(await res.text());
+    wireNewsAccordion(box);
     newsLoaded = true;
   } catch (e) {
     box.innerHTML = `<p class="muted small">Kunde inte hämta nyheterna. Kontrollera uppkopplingen.</p>`;
