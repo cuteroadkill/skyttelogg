@@ -71,7 +71,8 @@ let weaponsSheetGridId = null; // numeriskt sheetId för "Vapen"-fliken
 let appReady = false;          // true när ett ark är anslutet och laddat
 let connecting = false;        // true medan connectSheet provar ett (nytt) ark
 let sheetProblem = null;       // null, "unreachable" (403/404) eller "trashed"
-let statsSheetExists = false;  // om fliken Statistik finns i arket
+let statsSheetGridId = null;   // numeriskt sheetId för "Statistik", null = saknas
+let protectedKeys = new Set(); // beskrivningar på befintliga skydd i arket
 let currentMode = "training";
 let currentView = "log";
 
@@ -550,6 +551,7 @@ async function connectSheet(id) {
     connecting = false;
   }
   await ensureWeaponsSheet();
+  try { await ensureProtections(); } catch (e) { /* ej kritiskt */ }
   await loadWeapons();
   buildWeaponList();
   if (!CONFIG.SPREADSHEET_ID) localStorage.setItem(LOCAL_SHEET_KEY, spreadsheetId);
@@ -750,7 +752,9 @@ async function readLogRows(range) {
 }
 
 async function loadSheetMeta() {
-  const data = await sheetsFetch(`${spreadsheetId}?fields=properties.title,sheets.properties`);
+  const data = await sheetsFetch(
+    `${spreadsheetId}?fields=properties.title,sheets(properties,protectedRanges(description))`
+  );
   spreadsheetTitle = (data.properties && data.properties.title) || "";
   const all = data.sheets.map(s => s.properties);
   const logSheet =
@@ -761,7 +765,65 @@ async function loadSheetMeta() {
   sheetGridId = logSheet.sheetId;
   const weaponsSheet = all.find(s => s.title === WEAPONS_TAB_NAME);
   weaponsSheetGridId = weaponsSheet ? weaponsSheet.sheetId : null;
-  statsSheetExists = all.some(s => s.title === STATS_TAB_NAME);
+  const statsSheet = all.find(s => s.title === STATS_TAB_NAME);
+  statsSheetGridId = statsSheet ? statsSheet.sheetId : null;
+  protectedKeys = new Set();
+  data.sheets.forEach(s => (s.protectedRanges || []).forEach(p => {
+    if (p.description) protectedKeys.add(p.description);
+  }));
+}
+
+// ---------- Skydd i arket ----------
+// Varningsskydd: alla kan fortfarande redigera, men Google Sheets ber om
+// bekräftelse. Appens egna skrivningar via API påverkas inte. Läggs till en
+// gång per ark, känns igen på beskrivningen.
+const PROTECTION = {
+  header: "Skyttelogg: kolumnrubriker",
+  weapons: "Skyttelogg: vapenlista",
+  stats: "Skyttelogg: statistik"
+};
+
+const WEAPONS_HELP = [
+  ["Hanteras av Skyttelogg"],
+  ["Ändra vapen i appen: Meny → Vapen."],
+  ["A: vapnets namn"],
+  ["B: 1 = favorit"],
+  ["C: skott per ask"],
+  ["D: 1 = dold i loggningen"]
+];
+
+function protectRequest(description, range) {
+  return { addProtectedRange: { protectedRange: { description, range, warningOnly: true } } };
+}
+
+async function ensureProtections() {
+  const requests = [];
+  let weaponsAdded = false;
+  if (!protectedKeys.has(PROTECTION.header) && sheetGridId !== null) {
+    requests.push(protectRequest(PROTECTION.header, { sheetId: sheetGridId, startRowIndex: 0, endRowIndex: 1 }));
+  }
+  if (!protectedKeys.has(PROTECTION.weapons) && weaponsSheetGridId !== null) {
+    requests.push(protectRequest(PROTECTION.weapons, { sheetId: weaponsSheetGridId }));
+    weaponsAdded = true;
+  }
+  if (!protectedKeys.has(PROTECTION.stats) && statsSheetGridId !== null) {
+    requests.push(protectRequest(PROTECTION.stats, { sheetId: statsSheetGridId }));
+  }
+  if (requests.length === 0) return;
+
+  await sheetsFetch(`${spreadsheetId}:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({ requests })
+  });
+  requests.forEach(r => protectedKeys.add(r.addProtectedRange.protectedRange.description));
+
+  // Förklaring bredvid vapenlistan. Kolumn F läses och skrivs aldrig annars.
+  if (weaponsAdded) {
+    await sheetsFetch(
+      `${spreadsheetId}/values/${a1(WEAPONS_TAB_NAME, `F1:F${WEAPONS_HELP.length}`)}?valueInputOption=RAW`,
+      { method: "PUT", body: JSON.stringify({ values: WEAPONS_HELP }) }
+    );
+  }
 }
 
 // Skapar fliken "Vapen" om den inte redan finns, med standardvapnen.
@@ -1110,8 +1172,10 @@ function computeStats(rows) {
     }
     months[mk][type].add(date);
 
+    // Annat-aktiviteter utan mängd (t.ex. äldre rader med fritext i
+    // vapenkolumnen) räknas inte som vapen.
     const key = normalizeWeaponName(rawWeapon);
-    if (!key) return;
+    if (!key || (type === "other" && parseAmount(amount).unit === null)) return;
     const { shots, approx } = shotsFor(amount, boxSizeFor(key));
     totalShots += shots;
     if (approx) totalApprox = true;
@@ -1217,7 +1281,7 @@ async function writeStatsSheet(stats) {
   const stamp = `${todayLocalStr()} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const values = [
     ["Statistik"],
-    [`Uppdaterad av Skyttelogg ${stamp}. Fliken skrivs om vid nästa uppdatering – bygg egna beräkningar i en annan flik.`],
+    [`Skapas och skrivs om av Skyttelogg varje gång statistiken öppnas i appen. Ändra inget här – bygg egna beräkningar i en annan flik. Senast uppdaterad ${stamp}.`],
     [],
     ...table
   ];
@@ -1225,17 +1289,19 @@ async function writeStatsSheet(stats) {
   const id = spreadsheetId;
   statsWriting = true;
   try {
-    if (!statsSheetExists) {
+    if (statsSheetGridId === null) {
       try {
-        await sheetsFetch(`${id}:batchUpdate`, {
+        const result = await sheetsFetch(`${id}:batchUpdate`, {
           method: "POST",
           body: JSON.stringify({ requests: [{ addSheet: { properties: { title: STATS_TAB_NAME } } }] })
         });
+        statsSheetGridId = result.replies[0].addSheet.properties.sheetId;
       } catch (e) {
         if (!/already exists|finns redan/i.test(e.message || "")) throw e;
+        await loadSheetMeta(); // skapad från en annan enhet under tiden
       }
-      statsSheetExists = true;
     }
+    try { await ensureProtections(); } catch (e) { /* ej kritiskt */ }
     await sheetsFetch(`${id}/values/${a1(STATS_TAB_NAME, "A:Z")}:clear`, { method: "POST", body: "{}" });
     await sheetsFetch(
       `${id}/values/${a1(STATS_TAB_NAME, "A1")}?valueInputOption=RAW`,
