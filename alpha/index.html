@@ -16,6 +16,27 @@
 <body>
 
   <div id="toast" class="toast"></div>
+
+  <!-- Splash medan appen laddar med sparad inloggning -->
+  <div id="splash" class="splash hidden" aria-live="polite">
+    <div class="start-hero animate">
+      <svg class="logo-mark" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+        <circle class="logo-ripple" cx="50" cy="50" r="10"></circle>
+        <circle class="logo-ring" cx="50" cy="50" r="34" transform="rotate(-90 50 50)"></circle>
+        <line class="logo-tick-top" x1="50" y1="8" x2="50" y2="24"></line>
+        <line class="logo-tick-left" x1="8" y1="50" x2="24" y2="50"></line>
+        <circle class="logo-hit" cx="50" cy="50" r="4"></circle>
+      </svg>
+      <div class="start-brand">
+        <div class="start-name">
+          <span class="start-wordmark">SKYTTELOGG</span>
+          <span class="channel-tag start-tag hidden"></span>
+        </div>
+        <span class="start-tagline">Logga ett pass på sekunder.</span>
+      </div>
+    </div>
+    <div class="splash-status">Hämtar dina pass<span class="dot1">·</span><span class="dot2">·</span><span class="dot3">·</span></div>
+  </div>
   <button type="button" id="reauthBanner" class="reauth-banner hidden">Sessionen gick ut — tryck här för att logga in igen</button>
 
   <header class="topbar">
@@ -30,14 +51,30 @@
 
   <main class="app-shell">
 
-    <!-- Inloggningsvy -->
-    <section id="signedOutView" class="center-panel">
-      <div class="reticle" aria-hidden="true"></div>
-      <h1>Skyttelogg</h1>
-      <p class="muted">Logga dina träningspass, tävlingar och annat — direkt till ditt eget Google Sheet.</p>
-      <button id="signInBtn" class="btn btn-primary btn-wide" disabled>Logga in med Google</button>
-      <p class="fine-print muted">Din data lagras i ditt eget kalkylark. Ingen annan har åtkomst.</p>
-      <a href="privacy.html" class="sheet-link" style="margin-top:8px;">Integritetspolicy</a>
+    <!-- Startsida: första gången eller när inloggningen gått ut -->
+    <section id="signedOutView" class="start-screen hidden">
+      <div class="start-hero">
+        <svg class="logo-mark" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+          <circle class="logo-ripple" cx="50" cy="50" r="10"></circle>
+          <circle class="logo-ring" cx="50" cy="50" r="34" transform="rotate(-90 50 50)"></circle>
+          <line class="logo-tick-top" x1="50" y1="8" x2="50" y2="24"></line>
+          <line class="logo-tick-left" x1="8" y1="50" x2="24" y2="50"></line>
+          <circle class="logo-hit" cx="50" cy="50" r="4"></circle>
+        </svg>
+        <div class="start-brand">
+          <div class="start-name">
+            <span class="start-wordmark">SKYTTELOGG</span>
+            <span class="channel-tag start-tag hidden"></span>
+          </div>
+          <span class="start-tagline">Logga ett pass på sekunder.</span>
+        </div>
+      </div>
+      <div class="start-actions">
+        <p id="startIntro" class="start-intro">Dina träningspass, tävlingar och annat – direkt till ditt eget Google-kalkylark. Ingen annan har åtkomst.</p>
+        <button id="signInBtn" class="btn btn-primary btn-wide start-btn" disabled>Logga in med Google</button>
+        <p id="startHint" class="start-hint hidden">Google bekräftar att det är du. Du hålls inloggad en timme i taget.</p>
+        <a id="startPrivacy" href="privacy.html" class="start-link">Integritetspolicy</a>
+      </div>
     </section>
 
     <!-- Appvy -->
