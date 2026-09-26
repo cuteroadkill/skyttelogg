@@ -206,9 +206,14 @@
 
         <h2 class="section-title section-title--spaced">Om appen</h2>
         <div class="menu-group">
-          <a id="menuIssuesLink" href="#" target="_blank" rel="noopener" class="menu-row hidden">
-            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-            <span class="menu-label">Rapportera bugg eller idé</span>
+          <a id="menuBugLink" href="#" target="_blank" rel="noopener" class="menu-row hidden">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2l1.5 2.5M16 2l-1.5 2.5"></path><rect x="7" y="5" width="10" height="15" rx="5"></rect><line x1="12" y1="10" x2="12" y2="20"></line><path d="M3 9l4 2M21 9l-4 2M3 15h4M21 15h-4M4 20l3-2M20 20l-3-2"></path></svg>
+            <span class="menu-label">Rapportera bugg</span>
+            <span class="menu-chev menu-chev--ext" aria-hidden="true">↗</span>
+          </a>
+          <a id="menuIdeaLink" href="#" target="_blank" rel="noopener" class="menu-row hidden">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"></path></svg>
+            <span class="menu-label">Föreslå en idé</span>
             <span class="menu-chev menu-chev--ext" aria-hidden="true">↗</span>
           </a>
           <button type="button" id="menuCoffeeBtn" class="menu-row">
@@ -231,7 +236,7 @@
         </div>
 
         <p class="menu-footer muted small">
-          Skyttelogg <span id="appVersion" class="mono"></span> — byggd av
+          Skyttelogg <button type="button" id="appVersion" class="version-btn mono" title="Tryck för att kopiera versionen"></button> — byggd av
           <a href="https://github.com/cuteroadkill" target="_blank" rel="noopener">cuteroadkill</a>
           ·
           <a href="https://github.com/cuteroadkill/skyttelogg" target="_blank" rel="noopener">källkod</a>

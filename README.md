@@ -163,7 +163,9 @@ Versionen skrivs som `ÅÅ.M.N` (år, månad, löpnummer inom månaden), t.ex.
 `26.9.1`, och står i `APP_VERSION` överst i `app.js`. Den visas längst ned i
 Meny, t.ex. `26.9.1 · alpha`. Samma nummer gäller i båda kanalerna, så en
 version flyttas från alpha till beta utan att någon fil ändras. Ange
-versionen i buggrapporter.
+versionen i buggrapporter. Via **Meny → Rapportera bugg** eller **Föreslå en
+idé** fylls versionen i automatiskt, och ett tryck på versionen längst ned i
+Meny kopierar den.
 
 `PUBLIC_BETA` i `app.js` styr beta-märkningen och sätts till `false` när
 appen anses färdig.

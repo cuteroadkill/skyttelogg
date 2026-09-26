@@ -8,12 +8,15 @@
 // ÅÅ.M.N: år, månad och löpnummer inom månaden. Räknas upp vid varje
 // leverans, även rättningar. Samma nummer i alpha och beta: uppflyttning
 // till den publicerade appen görs utan att ändra någon fil.
-const APP_VERSION = "26.9.1";
+const APP_VERSION = "26.9.2";
 // Den publicerade appen märks som beta så länge den utvecklas. Sätts till
 // false när appen anses färdig.
 const PUBLIC_BETA = true;
 // alpha = testkanalen i mappen alpha/, beta = den publicerade appen.
 const APP_CHANNEL = /\/alpha\//.test(location.pathname) ? "alpha" : (PUBLIC_BETA ? "beta" : "");
+
+// Så som versionen visas, t.ex. "26.9.2 · beta".
+const VERSION_LABEL = APP_VERSION + (APP_CHANNEL ? " · " + APP_CHANNEL : "");
 
 function renderVersion() {
   const tag = document.getElementById("channelTag");
@@ -22,8 +25,23 @@ function renderVersion() {
     tag.classList.add("channel-tag--" + APP_CHANNEL);
     tag.classList.remove("hidden");
   }
-  document.getElementById("appVersion").textContent =
-    APP_VERSION + (APP_CHANNEL ? " · " + APP_CHANNEL : "");
+  document.getElementById("appVersion").textContent = VERSION_LABEL;
+}
+
+async function copyVersion() {
+  try {
+    await navigator.clipboard.writeText(VERSION_LABEL);
+    showToast("Version kopierad: " + VERSION_LABEL, false);
+  } catch (e) {
+    showToast("Version: " + VERSION_LABEL, false);
+  }
+}
+
+// Länkar direkt till rätt formulär på GitHub med versionen ifylld. Fältets
+// id i mallen ("version") används som parameter i adressen.
+function issueFormUrl(template) {
+  const base = String(CONFIG.ISSUES_URL || "").replace(/\/new(\/choose)?\/?$/, "");
+  return `${base}/new?template=${encodeURIComponent(template)}&version=${encodeURIComponent(VERSION_LABEL)}`;
 }
 
 // Standardvapen när fliken "Vapen" skapas. Därefter hanteras listan under
@@ -195,10 +213,14 @@ window.addEventListener("load", () => {
   window.addEventListener("online", trySyncQueue);
 
   if (CONFIG.ISSUES_URL) {
-    const link = document.getElementById("menuIssuesLink");
-    link.href = CONFIG.ISSUES_URL;
-    link.classList.remove("hidden");
+    const bug = document.getElementById("menuBugLink");
+    const idea = document.getElementById("menuIdeaLink");
+    bug.href = issueFormUrl("bug_report.yml");
+    idea.href = issueFormUrl("feature_request.yml");
+    bug.classList.remove("hidden");
+    idea.classList.remove("hidden");
   }
+  document.getElementById("appVersion").addEventListener("click", copyVersion);
 
   // Utan API-nyckel finns ingen filväljare: dölj dess knappar och visa den
   // manuella vägen direkt.
