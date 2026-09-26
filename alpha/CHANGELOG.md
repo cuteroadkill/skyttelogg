@@ -6,7 +6,7 @@ fått, från första versionen till idag.
 
 ---
 
-## 26.9.4 · september 2026
+## 26.9.5 · september 2026
 
 - 🔓 **Förblir inloggad i upp till en timme** – öppna appen igen utan att
   logga in.
