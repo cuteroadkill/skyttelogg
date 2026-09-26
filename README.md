@@ -140,8 +140,12 @@ med slutet av adressen när arket är öppet i Google Sheets.
   Samma sak gäller om Google tillfälligt begränsar antalet anrop (fel 429);
   då görs ett nytt försök efter en minut.
   "X pass väntar på synk" visas ovanför Logga pass så länge något ligger i kö.
-- **Utgången session**: Googles inloggning gäller ungefär en timme. Efter
-  det visas "Sessionen gick ut" — tryck på den för att logga in igen.
+- **Inloggning**: Googles inloggning gäller ungefär en timme och sparas på
+  enheten under den tiden, så appen kan öppnas igen utan ny inloggning (med
+  en kort startanimation medan passen hämtas). Därefter räcker ett tryck på
+  **Fortsätt**. Går inloggningen ut medan appen är öppen visas "Sessionen
+  gick ut" — tryck på den för att fortsätta. Utloggning tar bort den sparade
+  inloggningen.
 - **Ark som slutat svara**: om arket raderas eller åtkomsten försvinner
   under en session tänds en röd prick på **Meny**, och **Ark**-raden visar
   vad som behöver göras. Samma varning visas om arket ligger i
@@ -163,7 +167,12 @@ Versionen skrivs som `ÅÅ.M.N` (år, månad, löpnummer inom månaden), t.ex.
 `26.9.1`, och står i `APP_VERSION` överst i `app.js`. Den visas längst ned i
 Meny, t.ex. `26.9.1 · alpha`. Samma nummer gäller i båda kanalerna, så en
 version flyttas från alpha till beta utan att någon fil ändras. Ange
-versionen i buggrapporter. Via **Meny → Rapportera bugg** eller **Föreslå en
+versionen i buggrapporter.
+
+`CHANGELOG.md` visas i appen under **Meny → Nyheter** och skrivs för
+användare: kort, enkelt och med senaste versionen överst. Raden märks
+**NY** tills man har öppnat nyheterna för den aktuella versionen. Lägg till
+en rubrik för varje version som flyttas till beta. Via **Meny → Rapportera bugg** eller **Föreslå en
 idé** fylls versionen i automatiskt, och ett tryck på versionen längst ned i
 Meny kopierar den.
 
