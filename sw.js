@@ -1,7 +1,8 @@
-// Cachenamnet innehåller scope, så att beta (/beta/) och live inte rensar
-// varandras cacher.
+// Versionen kommer från adressen (sw.js?v=26.9.1), satt av index.html utifrån
+// APP_VERSION i app.js. Cachenamnet innehåller även scope, så att alpha
+// (/alpha/) och den publicerade appen inte rensar varandras cacher.
 const CACHE_PREFIX = "skyttelogg-shell-";
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = new URL(self.location.href).searchParams.get("v") || "dev";
 const SCOPE = self.registration.scope;
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}|${SCOPE}`;
 const SHELL_FILES = [
@@ -24,7 +25,7 @@ self.addEventListener("install", event => {
 // Rensar äldre versioner för samma scope. Äldre cachenamn utan scope rensas
 // bara av rotversionen.
 self.addEventListener("activate", event => {
-  const isRootScope = !/\/beta\/$/.test(SCOPE);
+  const isRootScope = !/\/(alpha|beta)\/$/.test(SCOPE);
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => {
@@ -37,15 +38,17 @@ self.addEventListener("activate", event => {
   self.clients.claim();
 });
 
-// Nätverk först, cache som reserv offline, så att uppdateringar slår igenom
-// direkt. Anrop till andra ursprung (Google-API:er m.m.) hanteras inte här.
+// Nätverk först, cache som reserv offline. "no-cache" gör att servern alltid
+// tillfrågas (svarar 304 om inget ändrats), så att webbläsarens egen
+// HTTP-cache inte kan servera en gammal fil efter en uppdatering. Anrop
+// till andra ursprung (Google-API:er m.m.) hanteras inte här.
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: "no-cache" })
       .then(response => {
         // Cacha bara lyckade svar, så att ett felsvar aldrig ersätter en
         // fungerande fil.

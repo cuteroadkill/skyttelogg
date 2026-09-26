@@ -23,6 +23,7 @@
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"></span>
         <span class="brand-text">SKYTTELOGG</span>
+        <span id="channelTag" class="channel-tag hidden"></span>
       </div>
     </div>
   </header>
@@ -136,16 +137,42 @@
         <div id="calDayList" class="card-list"></div>
       </section>
 
+      <!-- ===== Vy: Statistik ===== -->
+      <section id="viewStats" class="view hidden">
+        <div class="section-row">
+          <h2 class="section-title">Översikt</h2>
+          <span id="statsSince" class="section-meta"></span>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-box"><span id="statsPass" class="summary-num mono">–</span><span class="summary-cap">pass</span></div>
+          <div class="summary-box"><span id="statsShots" class="summary-num mono">–</span><span class="summary-cap">skott</span></div>
+          <div class="summary-box"><span id="statsComps" class="summary-num summary-num--accent mono">–</span><span class="summary-cap">tävlingar</span></div>
+        </div>
+
+        <h2 class="section-title section-title--spaced">Per vapen</h2>
+        <div id="statsWeaponList" class="card-list">
+          <p class="muted small">Laddar...</p>
+        </div>
+        <p class="stats-note muted">≈ = pass loggade i askar, omräknade med vapnets askstorlek (Meny → Vapen). Statistiken sparas även i fliken Statistik i ditt ark.</p>
+
+        <h2 class="section-title section-title--spaced">Underlag</h2>
+        <div class="card export-card">
+          <div class="export-card-head">
+            <svg class="export-card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="14 3 14 9 20 9"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
+            <div>
+              <div class="export-card-title">Exportera till PDF</div>
+              <p class="export-card-text">En sammanställning per vapen för vald period: antal pass, varav tävlingar, och mängd ammunition, följd av alla loggade pass. Bra som underlag när föreningen ska intyga din skytteaktivitet.</p>
+            </div>
+          </div>
+          <button type="button" id="statsExportBtn" class="btn btn-primary btn-wide">Skapa PDF</button>
+        </div>
+      </section>
+
       <!-- ===== Vy: Meny ===== -->
       <section id="viewMenu" class="view hidden">
 
         <h2 class="section-title">Min logg</h2>
         <div class="menu-group">
-          <button type="button" id="menuExportBtn" class="menu-row">
-            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="14 3 14 9 20 9"></polyline><line x1="12" y1="12" x2="12" y2="18"></line><polyline points="9 15 12 18 15 15"></polyline></svg>
-            <span class="menu-label">Exportera till PDF</span>
-            <span class="menu-chev" aria-hidden="true">›</span>
-          </button>
           <a id="menuSheetLink" href="#" target="_blank" rel="noopener" class="menu-row">
             <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="9" x2="9" y2="21"></line></svg>
             <span class="menu-label">Öppna kalkylarket</span>
@@ -204,7 +231,7 @@
         </div>
 
         <p class="menu-footer muted small">
-          Skyttelogg — byggd av
+          Skyttelogg <span id="appVersion" class="mono"></span> — byggd av
           <a href="https://github.com/cuteroadkill" target="_blank" rel="noopener">cuteroadkill</a>
           ·
           <a href="https://github.com/cuteroadkill/skyttelogg" target="_blank" rel="noopener">källkod</a>
@@ -258,6 +285,7 @@
       <div class="overlay-panel">
         <h2>Exportera till PDF</h2>
 
+        <div id="exportForm">
         <div class="field-group">
           <label for="exportFromInput">Från</label>
           <div class="date-wrap">
@@ -277,6 +305,29 @@
           <button id="exportCancelBtn" class="btn btn-secondary">Avbryt</button>
           <button id="exportGenerateBtn" class="btn btn-primary">Skapa PDF</button>
         </div>
+        </div>
+
+        <div id="exportDone" class="hidden">
+          <div class="field-group">
+            <label>Period</label>
+            <div id="exportDonePeriod" class="input mono"></div>
+          </div>
+          <div class="file-card">
+            <svg class="file-card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="14 3 14 9 20 9"></polyline></svg>
+            <span class="file-card-body">
+              <span class="file-card-title">PDF klar</span>
+              <span id="exportFileName" class="file-card-name"></span>
+            </span>
+          </div>
+          <div class="export-done-actions">
+            <button type="button" id="exportShareBtn" class="btn btn-primary">Dela</button>
+            <button type="button" id="exportSaveBtn" class="btn btn-secondary">Spara</button>
+          </div>
+          <p id="exportShareHint" class="muted small hidden" style="margin: 10px 2px 0;">Den här webbläsaren kan inte dela filer direkt. Spara PDF:en och skicka den därifrån.</p>
+          <div class="overlay-actions">
+            <button type="button" id="exportDoneCloseBtn" class="btn btn-secondary">Stäng</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -284,7 +335,7 @@
     <div id="weaponsOverlay" class="overlay hidden">
       <div class="overlay-panel">
         <h2>Vapen</h2>
-        <p class="muted small sheet-intro">Dessa syns som val när du loggar ett pass. Stjärnmärkta hamnar överst.</p>
+        <p class="muted small sheet-intro">Dessa syns som val när du loggar ett pass. Stjärnmärkta hamnar överst. Dolda (överstruket öga) syns inte när du loggar, men finns kvar i statistiken.</p>
 
         <div id="weaponsManageList" class="weapons-manage-list"></div>
 
@@ -401,6 +452,10 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="16" y1="3" x2="16" y2="7"></line></svg>
       <span>Kalender</span>
     </button>
+    <button type="button" class="nav-btn" data-view="stats">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="20" x2="6" y2="12"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="18" y1="20" x2="18" y2="9"></line></svg>
+      <span>Statistik</span>
+    </button>
     <button type="button" class="nav-btn" data-view="menu">
       <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="20" y2="17"></line></svg>
       <span>Meny</span>
@@ -416,7 +471,8 @@
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js").catch(() => {});
+        // Versionen i adressen ger en ny service worker och ny cache per version.
+        navigator.serviceWorker.register("sw.js?v=" + encodeURIComponent(APP_VERSION)).catch(() => {});
       });
     }
   </script>
