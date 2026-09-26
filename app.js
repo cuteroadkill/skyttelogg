@@ -8,7 +8,7 @@
 // ÅÅ.M.N: år, månad och löpnummer inom månaden. Räknas upp vid varje
 // leverans, även rättningar. Samma nummer i alpha och beta: uppflyttning
 // till den publicerade appen görs utan att ändra någon fil.
-const APP_VERSION = "26.9.2";
+const APP_VERSION = "26.9.5";
 // Den publicerade appen märks som beta så länge den utvecklas. Sätts till
 // false när appen anses färdig.
 const PUBLIC_BETA = true;
@@ -19,11 +19,12 @@ const APP_CHANNEL = /\/alpha\//.test(location.pathname) ? "alpha" : (PUBLIC_BETA
 const VERSION_LABEL = APP_VERSION + (APP_CHANNEL ? " · " + APP_CHANNEL : "");
 
 function renderVersion() {
-  const tag = document.getElementById("channelTag");
   if (APP_CHANNEL) {
-    tag.textContent = APP_CHANNEL.toUpperCase();
-    tag.classList.add("channel-tag--" + APP_CHANNEL);
-    tag.classList.remove("hidden");
+    document.querySelectorAll("#channelTag, .start-tag").forEach(tag => {
+      tag.textContent = APP_CHANNEL.toUpperCase();
+      tag.classList.add("channel-tag--" + APP_CHANNEL);
+      tag.classList.remove("hidden");
+    });
   }
   document.getElementById("appVersion").textContent = VERSION_LABEL;
 }
@@ -71,6 +72,9 @@ const THEME_KEY = "msf_theme";
 const LOCAL_SHEET_KEY = "msf_spreadsheet_id";
 const QUEUE_KEY = "msf_pending_queue";
 const LOCATION_KEY = "skyttelogg_location";
+const SESSION_KEY = "skyttelogg_session";  // sparad inloggning, högst en timme
+const KNOWN_KEY = "skyttelogg_known";      // inloggad förut på enheten, ej utloggad
+const NEWS_SEEN_KEY = "skyttelogg_news_seen"; // senaste version vars nyheter visats
 
 let currentThemeId = "brass";
 
@@ -234,6 +238,20 @@ window.addEventListener("load", () => {
     createBtn.classList.add("btn-primary");
   }
 
+  // Sparad inloggning som fortfarande gäller: splash och rakt in. Annars
+  // startsidan, med "Fortsätt" för den som loggat in här förut.
+  const session = loadSession();
+  if (session) {
+    showSplash();
+    onTokenReceived({
+      access_token: session.token,
+      expires_in: Math.floor((session.expiresAt - Date.now()) / 1000),
+      restored: true
+    });
+  } else {
+    showStartScreen();
+  }
+
   // Google-biblioteket laddas async — vänta tills det finns
   waitForGoogleLib(() => {
     tokenClient = google.accounts.oauth2.initTokenClient({
@@ -241,11 +259,80 @@ window.addEventListener("load", () => {
       scope: CONFIG.SCOPES,
       callback: onTokenReceived
     });
-    const btn = document.getElementById("signInBtn");
-    btn.textContent = "Logga in med Google";
-    btn.disabled = false;
+    document.getElementById("signInBtn").disabled = false;
   });
 });
+
+// ---------- Sparad inloggning ----------
+// Googles åtkomsttoken gäller ungefär en timme och ger bara åtkomst till
+// appens eget ark (drive.file). Den sparas på enheten under den tiden så att
+// appen kan öppnas igen utan ny inloggning; därefter krävs ett tryck, eftersom
+// Google bara lämnar ut en ny token efter en handling från användaren.
+function saveSession() {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ token: accessToken, expiresAt: tokenExpiresAt }));
+    localStorage.setItem(KNOWN_KEY, "1");
+  } catch (e) { /* ignoreras */ }
+}
+
+function loadSession() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    if (s && s.token && Number(s.expiresAt) - Date.now() > 120000) return s;
+  } catch (e) { /* ignoreras */ }
+  clearSession();
+  return null;
+}
+
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch (e) { /* ignoreras */ }
+}
+
+function showStartScreen() {
+  const known = localStorage.getItem(KNOWN_KEY) === "1";
+  document.getElementById("signInBtn").textContent = known ? "Fortsätt" : "Logga in med Google";
+  document.getElementById("startIntro").classList.toggle("hidden", known);
+  document.getElementById("startHint").classList.toggle("hidden", !known);
+  document.getElementById("startPrivacy").classList.toggle("hidden", known);
+  document.getElementById("appView").classList.add("hidden");
+  document.getElementById("bottomNav").classList.add("hidden");
+  document.getElementById("signedOutView").classList.remove("hidden");
+}
+
+// Splashen visas minst 2 s så att animationen (ca 1,5 s) hinner klart,
+// men aldrig längre än laddningen när den tar längre tid. Tryck hoppar över.
+const SPLASH_MIN_MS = 2000;
+let splashMinUntil = 0;
+let splashHidePending = false;
+
+function showSplash() {
+  const splash = document.getElementById("splash");
+  splash.classList.remove("hidden", "fading");
+  splashMinUntil = Date.now() + SPLASH_MIN_MS;
+  splashHidePending = false;
+  splash.addEventListener("click", skipSplash, { once: true });
+}
+
+function skipSplash() {
+  splashMinUntil = 0;
+  if (splashHidePending) hideSplash();
+}
+
+function hideSplash() {
+  const splash = document.getElementById("splash");
+  if (splash.classList.contains("hidden")) return;
+  const wait = splashMinUntil - Date.now();
+  if (wait > 0) {
+    if (!splashHidePending) {
+      splashHidePending = true;
+      setTimeout(() => { if (splashHidePending) hideSplash(); }, wait);
+    }
+    return;
+  }
+  splashHidePending = false;
+  splash.classList.add("fading");
+  setTimeout(() => splash.classList.add("hidden"), 260);
+}
 
 function waitForGoogleLib(cb, waited = 0) {
   if (window.google && google.accounts && google.accounts.oauth2) return cb();
@@ -365,6 +452,11 @@ function wireStaticEvents() {
   document.getElementById("copySwishBtn").addEventListener("click", copySwishNumber);
   wireBackdropClose("coffeeOverlay", closeCoffeeOverlay);
 
+  // Meny → Nyheter
+  document.getElementById("menuNewsBtn").addEventListener("click", openNewsOverlay);
+  document.getElementById("newsCloseBtn").addEventListener("click", closeNewsOverlay);
+  wireBackdropClose("newsOverlay", closeNewsOverlay);
+
   // Meny → Logga ut (med bekräftelse)
   document.getElementById("menuSignOutBtn").addEventListener("click", confirmSignOut);
 
@@ -414,7 +506,7 @@ function setView(view) {
   window.scrollTo(0, 0);
   if (view === "calendar") loadCalendar();
   if (view === "stats") loadStats();
-  if (view === "menu") updateMenuMeta();
+  if (view === "menu") { updateMenuMeta(); updateNewsBadge(); }
 }
 
 // Efter loggning, redigering, radering eller kösynk.
@@ -433,6 +525,7 @@ async function onTokenReceived(resp) {
   }
   accessToken = resp.access_token;
   tokenExpiresAt = Date.now() + (Number(resp.expires_in) || 3600) * 1000;
+  if (!resp.restored) saveSession();
   hideReauthBanner();
 
   document.getElementById("signedOutView").classList.add("hidden");
@@ -441,6 +534,7 @@ async function onTokenReceived(resp) {
 
   // Förnyad session: allt är redan laddat, synka bara kön.
   if (appReady) {
+    hideSplash();
     await trySyncQueue();
     refreshData();
     return;
@@ -454,14 +548,22 @@ async function onTokenReceived(resp) {
   //    skulle bli en tom dubblett för den som redan har historik.
   const knownId = CONFIG.SPREADSHEET_ID || localStorage.getItem(LOCAL_SHEET_KEY);
   if (!knownId) {
+    hideSplash();
     openSheetSetup();
     return;
   }
 
   try {
     await connectSheet(knownId);
+    hideSplash();
   } catch (e) {
-    if (isSheetUnreachable(e)) {
+    hideSplash();
+    if (e.authExpired) {
+      // Den sparade inloggningen godtogs inte längre: tillbaka till startsidan.
+      clearSession();
+      hideReauthBanner();
+      showStartScreen();
+    } else if (isSheetUnreachable(e)) {
       openSheetSetup(
         "Appen kommer inte åt arket den här enheten använde senast " +
         "(vanligt efter byte av telefon eller behörighet). Välj ditt " +
@@ -491,6 +593,7 @@ function tokenIsValid() {
 
 function sessionExpiredError() {
   accessToken = null;
+  clearSession();
   showReauthBanner();
   const err = new Error("Sessionen gick ut. Tryck på bannern överst för att logga in igen.");
   err.authExpired = true;
@@ -515,9 +618,11 @@ function confirmSignOut() {
 }
 
 function signOut() {
-  if (accessToken) {
+  if (accessToken && window.google && google.accounts && google.accounts.oauth2) {
     google.accounts.oauth2.revoke(accessToken, () => {});
   }
+  clearSession();
+  try { localStorage.removeItem(KNOWN_KEY); } catch (e) { /* ignoreras */ }
   accessToken = null;
   tokenExpiresAt = 0;
   appReady = false;
@@ -531,9 +636,8 @@ function signOut() {
   closeSheetSetup();
   document.querySelectorAll(".overlay").forEach(o => o.classList.add("hidden"));
   setView("log");
-  document.getElementById("appView").classList.add("hidden");
-  document.getElementById("bottomNav").classList.add("hidden");
-  document.getElementById("signedOutView").classList.remove("hidden");
+  hideSplash();
+  showStartScreen();
 }
 
 // ---------- Ark-problem (indikator) ----------
@@ -1585,6 +1689,63 @@ function openThemeOverlay() {
 }
 function closeThemeOverlay() {
   document.getElementById("themeOverlay").classList.add("hidden");
+}
+
+// ---------- Nyheter ----------
+// Innehållet hämtas från CHANGELOG.md bredvid appen, så att changeloggen på
+// GitHub och i appen alltid är samma text. Stöder det som filen använder:
+// ## rubriker, - punkter (med indragna fortsättningsrader) och **fetstil**.
+let newsLoaded = false;
+
+function renderChangelog(md) {
+  const inline = s => escapeHtml(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  let html = "";
+  let inList = false;
+  let item = null;
+  const flushItem = () => { if (item !== null) { html += `<li>${inline(item)}</li>`; item = null; } };
+  const closeList = () => { flushItem(); if (inList) { html += "</ul>"; inList = false; } };
+
+  md.split(/\r?\n/).forEach(line => {
+    if (/^## /.test(line)) {
+      closeList();
+      html += `<h3>${inline(line.slice(3).trim())}</h3>`;
+    } else if (/^- /.test(line)) {
+      flushItem();
+      if (!inList) { html += "<ul>"; inList = true; }
+      item = line.slice(2).trim();
+    } else if (item !== null && /^\s+\S/.test(line)) {
+      item += " " + line.trim();
+    } else if (!line.trim() || /^(#|---)/.test(line)) {
+      flushItem();
+    }
+  });
+  closeList();
+  return html;
+}
+
+async function openNewsOverlay() {
+  document.getElementById("newsOverlay").classList.remove("hidden");
+  localStorage.setItem(NEWS_SEEN_KEY, APP_VERSION);
+  updateNewsBadge();
+  if (newsLoaded) return;
+  const box = document.getElementById("newsContent");
+  try {
+    const res = await fetch("CHANGELOG.md");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    box.innerHTML = renderChangelog(await res.text());
+    newsLoaded = true;
+  } catch (e) {
+    box.innerHTML = `<p class="muted small">Kunde inte hämta nyheterna. Kontrollera uppkopplingen.</p>`;
+  }
+}
+
+function closeNewsOverlay() {
+  document.getElementById("newsOverlay").classList.add("hidden");
+}
+
+function updateNewsBadge() {
+  const seen = localStorage.getItem(NEWS_SEEN_KEY);
+  document.getElementById("menuNewsBadge").classList.toggle("hidden", seen === APP_VERSION);
 }
 
 // ---------- Meny ----------
