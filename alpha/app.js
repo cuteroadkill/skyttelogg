@@ -8,7 +8,7 @@
 // ÅÅ.M.N: år, månad och löpnummer inom månaden. Räknas upp vid varje
 // leverans, även rättningar. Samma nummer i alpha och beta: uppflyttning
 // till den publicerade appen görs utan att ändra någon fil.
-const APP_VERSION = "26.9.2";
+const APP_VERSION = "26.9.3";
 // Den publicerade appen märks som beta så länge den utvecklas. Sätts till
 // false när appen anses färdig.
 const PUBLIC_BETA = true;
@@ -19,11 +19,12 @@ const APP_CHANNEL = /\/alpha\//.test(location.pathname) ? "alpha" : (PUBLIC_BETA
 const VERSION_LABEL = APP_VERSION + (APP_CHANNEL ? " · " + APP_CHANNEL : "");
 
 function renderVersion() {
-  const tag = document.getElementById("channelTag");
   if (APP_CHANNEL) {
-    tag.textContent = APP_CHANNEL.toUpperCase();
-    tag.classList.add("channel-tag--" + APP_CHANNEL);
-    tag.classList.remove("hidden");
+    document.querySelectorAll("#channelTag, .start-tag").forEach(tag => {
+      tag.textContent = APP_CHANNEL.toUpperCase();
+      tag.classList.add("channel-tag--" + APP_CHANNEL);
+      tag.classList.remove("hidden");
+    });
   }
   document.getElementById("appVersion").textContent = VERSION_LABEL;
 }
@@ -71,6 +72,8 @@ const THEME_KEY = "msf_theme";
 const LOCAL_SHEET_KEY = "msf_spreadsheet_id";
 const QUEUE_KEY = "msf_pending_queue";
 const LOCATION_KEY = "skyttelogg_location";
+const SESSION_KEY = "skyttelogg_session";  // sparad inloggning, högst en timme
+const KNOWN_KEY = "skyttelogg_known";      // inloggad förut på enheten, ej utloggad
 
 let currentThemeId = "brass";
 
@@ -234,6 +237,20 @@ window.addEventListener("load", () => {
     createBtn.classList.add("btn-primary");
   }
 
+  // Sparad inloggning som fortfarande gäller: splash och rakt in. Annars
+  // startsidan, med "Fortsätt" för den som loggat in här förut.
+  const session = loadSession();
+  if (session) {
+    showSplash();
+    onTokenReceived({
+      access_token: session.token,
+      expires_in: Math.floor((session.expiresAt - Date.now()) / 1000),
+      restored: true
+    });
+  } else {
+    showStartScreen();
+  }
+
   // Google-biblioteket laddas async — vänta tills det finns
   waitForGoogleLib(() => {
     tokenClient = google.accounts.oauth2.initTokenClient({
@@ -241,11 +258,57 @@ window.addEventListener("load", () => {
       scope: CONFIG.SCOPES,
       callback: onTokenReceived
     });
-    const btn = document.getElementById("signInBtn");
-    btn.textContent = "Logga in med Google";
-    btn.disabled = false;
+    document.getElementById("signInBtn").disabled = false;
   });
 });
+
+// ---------- Sparad inloggning ----------
+// Googles åtkomsttoken gäller ungefär en timme och ger bara åtkomst till
+// appens eget ark (drive.file). Den sparas på enheten under den tiden så att
+// appen kan öppnas igen utan ny inloggning; därefter krävs ett tryck, eftersom
+// Google bara lämnar ut en ny token efter en handling från användaren.
+function saveSession() {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ token: accessToken, expiresAt: tokenExpiresAt }));
+    localStorage.setItem(KNOWN_KEY, "1");
+  } catch (e) { /* ignoreras */ }
+}
+
+function loadSession() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    if (s && s.token && Number(s.expiresAt) - Date.now() > 120000) return s;
+  } catch (e) { /* ignoreras */ }
+  clearSession();
+  return null;
+}
+
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch (e) { /* ignoreras */ }
+}
+
+function showStartScreen() {
+  const known = localStorage.getItem(KNOWN_KEY) === "1";
+  document.getElementById("signInBtn").textContent = known ? "Fortsätt" : "Logga in med Google";
+  document.getElementById("startIntro").classList.toggle("hidden", known);
+  document.getElementById("startHint").classList.toggle("hidden", !known);
+  document.getElementById("startPrivacy").classList.toggle("hidden", known);
+  document.getElementById("appView").classList.add("hidden");
+  document.getElementById("bottomNav").classList.add("hidden");
+  document.getElementById("signedOutView").classList.remove("hidden");
+}
+
+function showSplash() {
+  const splash = document.getElementById("splash");
+  splash.classList.remove("hidden", "fading");
+}
+
+function hideSplash() {
+  const splash = document.getElementById("splash");
+  if (splash.classList.contains("hidden")) return;
+  splash.classList.add("fading");
+  setTimeout(() => splash.classList.add("hidden"), 260);
+}
 
 function waitForGoogleLib(cb, waited = 0) {
   if (window.google && google.accounts && google.accounts.oauth2) return cb();
@@ -433,6 +496,7 @@ async function onTokenReceived(resp) {
   }
   accessToken = resp.access_token;
   tokenExpiresAt = Date.now() + (Number(resp.expires_in) || 3600) * 1000;
+  if (!resp.restored) saveSession();
   hideReauthBanner();
 
   document.getElementById("signedOutView").classList.add("hidden");
@@ -441,6 +505,7 @@ async function onTokenReceived(resp) {
 
   // Förnyad session: allt är redan laddat, synka bara kön.
   if (appReady) {
+    hideSplash();
     await trySyncQueue();
     refreshData();
     return;
@@ -454,14 +519,22 @@ async function onTokenReceived(resp) {
   //    skulle bli en tom dubblett för den som redan har historik.
   const knownId = CONFIG.SPREADSHEET_ID || localStorage.getItem(LOCAL_SHEET_KEY);
   if (!knownId) {
+    hideSplash();
     openSheetSetup();
     return;
   }
 
   try {
     await connectSheet(knownId);
+    hideSplash();
   } catch (e) {
-    if (isSheetUnreachable(e)) {
+    hideSplash();
+    if (e.authExpired) {
+      // Den sparade inloggningen godtogs inte längre: tillbaka till startsidan.
+      clearSession();
+      hideReauthBanner();
+      showStartScreen();
+    } else if (isSheetUnreachable(e)) {
       openSheetSetup(
         "Appen kommer inte åt arket den här enheten använde senast " +
         "(vanligt efter byte av telefon eller behörighet). Välj ditt " +
@@ -491,6 +564,7 @@ function tokenIsValid() {
 
 function sessionExpiredError() {
   accessToken = null;
+  clearSession();
   showReauthBanner();
   const err = new Error("Sessionen gick ut. Tryck på bannern överst för att logga in igen.");
   err.authExpired = true;
@@ -515,9 +589,11 @@ function confirmSignOut() {
 }
 
 function signOut() {
-  if (accessToken) {
+  if (accessToken && window.google && google.accounts && google.accounts.oauth2) {
     google.accounts.oauth2.revoke(accessToken, () => {});
   }
+  clearSession();
+  try { localStorage.removeItem(KNOWN_KEY); } catch (e) { /* ignoreras */ }
   accessToken = null;
   tokenExpiresAt = 0;
   appReady = false;
@@ -531,9 +607,8 @@ function signOut() {
   closeSheetSetup();
   document.querySelectorAll(".overlay").forEach(o => o.classList.add("hidden"));
   setView("log");
-  document.getElementById("appView").classList.add("hidden");
-  document.getElementById("bottomNav").classList.add("hidden");
-  document.getElementById("signedOutView").classList.remove("hidden");
+  hideSplash();
+  showStartScreen();
 }
 
 // ---------- Ark-problem (indikator) ----------
