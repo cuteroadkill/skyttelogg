@@ -3,6 +3,15 @@ description: "Förslag på något nytt i appen, eller en förbättring av något
 title: "[Idé]: "
 labels: ["enhancement"]
 body:
+  - type: input
+    id: version
+    attributes:
+      label: Vilken version kör du? (valfritt)
+      description: Fylls i automatiskt om du kommer hit via appen. Står annars längst ned under Meny.
+      placeholder: 26.9.2 · beta
+    validations:
+      required: false
+
   - type: textarea
     id: what
     attributes:
