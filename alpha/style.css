@@ -169,16 +169,16 @@ body:has(#splash:not(.hidden)) .topbar { display: none; }
 @keyframes logoBreathe { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 @keyframes splashDots { 0%, 20% { opacity: .2; } 40% { opacity: 1; } 60%, 100% { opacity: .2; } }
 
-/* Hela förloppet på ca 1,2 s; splashen visas minst 1,5 s (se app.js). */
+/* Hela förloppet på ca 1,5 s; splashen visas minst 2 s (se app.js). */
 .animate .logo-ring {
-  animation: logoRing 0.5s cubic-bezier(.6,0,.2,1) both, logoBreathe 2.4s ease-in-out 1.5s infinite;
+  animation: logoRing 0.65s cubic-bezier(.6,0,.2,1) both, logoBreathe 2.4s ease-in-out 1.9s infinite;
 }
-.animate .logo-tick-top { animation: logoTickTop 0.3s ease-out 0.35s both; }
-.animate .logo-tick-left { animation: logoTickLeft 0.3s ease-out 0.45s both; }
+.animate .logo-tick-top { animation: logoTickTop 0.35s ease-out 0.45s both; }
+.animate .logo-tick-left { animation: logoTickLeft 0.35s ease-out 0.55s both; }
 .animate .logo-hit, .animate .logo-ripple { transform-origin: 50px 50px; transform-box: view-box; }
-.animate .logo-hit { animation: logoHit 0.3s ease-out 0.7s both; }
-.animate .logo-ripple { animation: logoRipple 0.7s ease-out 0.72s both; }
-.animate .start-brand { animation: logoRise 0.45s ease-out 0.8s both; }
+.animate .logo-hit { animation: logoHit 0.35s ease-out 0.9s both; }
+.animate .logo-ripple { animation: logoRipple 0.8s ease-out 0.92s both; }
+.animate .start-brand { animation: logoRise 0.5s ease-out 1.0s both; }
 .splash { cursor: pointer; }
 .dot1 { animation: splashDots 1.4s infinite; }
 .dot2 { animation: splashDots 1.4s 0.2s infinite; }
