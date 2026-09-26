@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Integritetspolicy — Skyttelogg</title>
+<style>
+  body {
+    margin: 0;
+    background: #14161A;
+    color: #EDEDEA;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+    padding: 32px 20px 80px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .updated { color: #9A9DA3; font-size: 13px; margin-bottom: 32px; }
+  h2 { font-size: 16px; margin-top: 32px; color: #C4915E; }
+  p, li { color: #D6D6D3; font-size: 15px; }
+  a { color: #C4915E; }
+  ul { padding-left: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a href="index.html" style="color:#9A9DA3; text-decoration:none; font-size:14px;">&larr; Tillbaka till appen</a>
+
+  <h1>Integritetspolicy — Skyttelogg</h1>
+  <p class="updated">Senast uppdaterad: 2026-09-26</p>
+
+  <p>
+    Skyttelogg är en liten, fristående webbapp för att logga träningspass och
+    tävlingar på en skjutbana. Den här sidan beskriver vilken data appen
+    hanterar och hur.
+  </p>
+
+  <h2>Vilken data appen hanterar</h2>
+  <p>
+    Appen lagrar det du själv skriver in när du loggar ett pass: datum,
+    aktivitetstyp (t.ex. Träning eller Tävling), vapengrupp/typ, antal skott,
+    plats eller förening, och en valfri notering. Dessutom sparas din
+    vapenlista, med antal skott per ask för varje vapen. Utifrån detta räknar
+    appen fram statistik, t.ex. antal pass och skott per vapen. Appen samlar
+    inte in positionsdata, kontakter eller något annat om dig.
+  </p>
+
+  <h2>Var datan lagras</h2>
+  <p>
+    Dina loggade pass lagras i ett Google Kalkylark i <strong>din egen</strong>
+    Google Drive — antingen ett ark appen skapar åt dig, eller ett befintligt
+    ark du själv väljer i Googles filväljare. Statistiken sparas i en egen
+    flik i samma ark. Utvecklaren av appen har ingen egen kopia av din data
+    och kan inte se den.
+  </p>
+  <p>
+    På din enhet (webbläsarens lokala lagring) sparar appen dessutom: vilket
+    ark den ska använda, ditt valda färgtema, senast använda plats, samt pass
+    som väntar på att synkas om du loggat utan uppkoppling. Detta lämnar
+    aldrig enheten annat än när köade pass skickas till ditt eget ark.
+  </p>
+
+  <h2>Vilka behörigheter appen ber om, och varför</h2>
+  <p>
+    Appen ber om behörigheten <em>drive.file</em>. Den ger åtkomst
+    <strong>endast</strong> till filer appen själv har skapat, eller som du
+    uttryckligen väljer i Googles filväljare. Behörigheten används enbart för
+    att läsa och skriva dina pass, din vapenlista och din statistik i det
+    arket, samt för att kontrollera om arket ligger i papperskorgen så att
+    appen kan varna dig innan det raderas. Appen kan inte se, söka i eller
+    läsa något annat i din Google Drive.
+  </p>
+
+  <h2>Användning av data från Googles API:er</h2>
+  <p>
+    Skyttelogg använder och överför information från Googles API:er i
+    enlighet med
+    <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank">Google API Services User Data Policy</a>,
+    inklusive kraven på begränsad användning (Limited Use). Datan används
+    bara för att visa och spara dina egna pass, delas inte med någon, och
+    används aldrig för reklam eller för att träna AI-modeller.
+  </p>
+  <p lang="en" style="font-size:13px; color:#9A9DA3;">
+    Skyttelogg's use and transfer to any other app of information received
+    from Google APIs will adhere to the
+    <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank">Google API Services User Data Policy</a>,
+    including the Limited Use requirements.
+  </p>
+
+  <h2>Anonym användningsstatistik</h2>
+  <p>
+    Appen räknar, helt anonymt, hur många gånger den öppnas och hur många
+    gånger man loggar ett pass eller exporterar eller delar en PDF — bara för
+    att utvecklaren ska kunna se om appen används. Det sker via
+    <a href="https://www.goatcounter.com" target="_blank">GoatCounter</a>,
+    som inte använder cookies och inte kan koppla besök till en specifik
+    person eller ditt Google-konto. Ingenting om <strong>vad</strong> du
+    loggar skickas dit — bara att en händelse inträffade.
+  </p>
+
+  <h2>Tjänster appen hämtar innehåll från</h2>
+  <p>
+    Som alla webbsidor skickar din webbläsare din IP-adress till de tjänster
+    en sida hämtar filer från. Skyttelogg hämtar från:
+  </p>
+  <ul>
+    <li><strong>Google</strong> — inloggning, kalkylarket, Drive, filväljaren
+      och typsnitten (Google Fonts).</li>
+    <li><strong>cdnjs (Cloudflare)</strong> — PDF-verktyget, bara när du
+      exporterar en PDF.</li>
+    <li><strong>GoatCounter</strong> — den anonyma räkningen ovan.</li>
+    <li><strong>GitHub Pages</strong> — själva appen.</li>
+  </ul>
+  <p>
+    Ingen av dem får del av dina loggade pass, utom Google som lagrar ditt
+    eget kalkylark åt dig. Ingen data säljs eller delas vidare. Delar du en
+    PDF via telefonens delningsmeny går den dit du själv väljer.
+  </p>
+
+  <h2>Radera din data</h2>
+  <p>
+    All data ligger i ditt eget kalkylark, så du har full kontroll — radera
+    enskilda pass i appen, eller ta bort hela arket i din Google Drive när du
+    vill. Du kan när som helst återkalla appens åtkomst via
+    <a href="https://myaccount.google.com/permissions" target="_blank">Googles kontoinställningar</a>.
+    Den lokala lagringen på enheten försvinner när du rensar webbläsarens
+    data för sidan, eller avinstallerar appen.
+  </p>
+
+  <h2>Kontakt</h2>
+  <p>
+    Frågor eller synpunkter? Öppna gärna ett ärende i projektets
+    <a href="https://github.com/cuteroadkill/skyttelogg/issues/new/choose" target="_blank">GitHub-repo</a>.
+  </p>
+
+</div>
+</body>
+</html>
