@@ -8,7 +8,7 @@
 // ÅÅ.M.N: år, månad och löpnummer inom månaden. Räknas upp vid varje
 // leverans, även rättningar. Samma nummer i alpha och beta: uppflyttning
 // till den publicerade appen görs utan att ändra någon fil.
-const APP_VERSION = "26.9.3";
+const APP_VERSION = "26.9.4";
 // Den publicerade appen märks som beta så länge den utvecklas. Sätts till
 // false när appen anses färdig.
 const PUBLIC_BETA = true;
@@ -74,6 +74,7 @@ const QUEUE_KEY = "msf_pending_queue";
 const LOCATION_KEY = "skyttelogg_location";
 const SESSION_KEY = "skyttelogg_session";  // sparad inloggning, högst en timme
 const KNOWN_KEY = "skyttelogg_known";      // inloggad förut på enheten, ej utloggad
+const NEWS_SEEN_KEY = "skyttelogg_news_seen"; // senaste version vars nyheter visats
 
 let currentThemeId = "brass";
 
@@ -298,14 +299,37 @@ function showStartScreen() {
   document.getElementById("signedOutView").classList.remove("hidden");
 }
 
+// Splashen visas minst 1,5 s så att animationen (ca 1,2 s) hinner klart,
+// men aldrig längre än laddningen när den tar längre tid. Tryck hoppar över.
+const SPLASH_MIN_MS = 1500;
+let splashMinUntil = 0;
+let splashHidePending = false;
+
 function showSplash() {
   const splash = document.getElementById("splash");
   splash.classList.remove("hidden", "fading");
+  splashMinUntil = Date.now() + SPLASH_MIN_MS;
+  splashHidePending = false;
+  splash.addEventListener("click", skipSplash, { once: true });
+}
+
+function skipSplash() {
+  splashMinUntil = 0;
+  if (splashHidePending) hideSplash();
 }
 
 function hideSplash() {
   const splash = document.getElementById("splash");
   if (splash.classList.contains("hidden")) return;
+  const wait = splashMinUntil - Date.now();
+  if (wait > 0) {
+    if (!splashHidePending) {
+      splashHidePending = true;
+      setTimeout(() => { if (splashHidePending) hideSplash(); }, wait);
+    }
+    return;
+  }
+  splashHidePending = false;
   splash.classList.add("fading");
   setTimeout(() => splash.classList.add("hidden"), 260);
 }
@@ -428,6 +452,11 @@ function wireStaticEvents() {
   document.getElementById("copySwishBtn").addEventListener("click", copySwishNumber);
   wireBackdropClose("coffeeOverlay", closeCoffeeOverlay);
 
+  // Meny → Nyheter
+  document.getElementById("menuNewsBtn").addEventListener("click", openNewsOverlay);
+  document.getElementById("newsCloseBtn").addEventListener("click", closeNewsOverlay);
+  wireBackdropClose("newsOverlay", closeNewsOverlay);
+
   // Meny → Logga ut (med bekräftelse)
   document.getElementById("menuSignOutBtn").addEventListener("click", confirmSignOut);
 
@@ -477,7 +506,7 @@ function setView(view) {
   window.scrollTo(0, 0);
   if (view === "calendar") loadCalendar();
   if (view === "stats") loadStats();
-  if (view === "menu") updateMenuMeta();
+  if (view === "menu") { updateMenuMeta(); updateNewsBadge(); }
 }
 
 // Efter loggning, redigering, radering eller kösynk.
@@ -1660,6 +1689,63 @@ function openThemeOverlay() {
 }
 function closeThemeOverlay() {
   document.getElementById("themeOverlay").classList.add("hidden");
+}
+
+// ---------- Nyheter ----------
+// Innehållet hämtas från CHANGELOG.md bredvid appen, så att changeloggen på
+// GitHub och i appen alltid är samma text. Stöder det som filen använder:
+// ## rubriker, - punkter (med indragna fortsättningsrader) och **fetstil**.
+let newsLoaded = false;
+
+function renderChangelog(md) {
+  const inline = s => escapeHtml(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  let html = "";
+  let inList = false;
+  let item = null;
+  const flushItem = () => { if (item !== null) { html += `<li>${inline(item)}</li>`; item = null; } };
+  const closeList = () => { flushItem(); if (inList) { html += "</ul>"; inList = false; } };
+
+  md.split(/\r?\n/).forEach(line => {
+    if (/^## /.test(line)) {
+      closeList();
+      html += `<h3>${inline(line.slice(3).trim())}</h3>`;
+    } else if (/^- /.test(line)) {
+      flushItem();
+      if (!inList) { html += "<ul>"; inList = true; }
+      item = line.slice(2).trim();
+    } else if (item !== null && /^\s+\S/.test(line)) {
+      item += " " + line.trim();
+    } else if (!line.trim() || /^(#|---)/.test(line)) {
+      flushItem();
+    }
+  });
+  closeList();
+  return html;
+}
+
+async function openNewsOverlay() {
+  document.getElementById("newsOverlay").classList.remove("hidden");
+  localStorage.setItem(NEWS_SEEN_KEY, APP_VERSION);
+  updateNewsBadge();
+  if (newsLoaded) return;
+  const box = document.getElementById("newsContent");
+  try {
+    const res = await fetch("CHANGELOG.md");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    box.innerHTML = renderChangelog(await res.text());
+    newsLoaded = true;
+  } catch (e) {
+    box.innerHTML = `<p class="muted small">Kunde inte hämta nyheterna. Kontrollera uppkopplingen.</p>`;
+  }
+}
+
+function closeNewsOverlay() {
+  document.getElementById("newsOverlay").classList.add("hidden");
+}
+
+function updateNewsBadge() {
+  const seen = localStorage.getItem(NEWS_SEEN_KEY);
+  document.getElementById("menuNewsBadge").classList.toggle("hidden", seen === APP_VERSION);
 }
 
 // ---------- Meny ----------
