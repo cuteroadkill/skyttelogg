@@ -1,0 +1,63 @@
+name: "🐛 Bugg"
+description: "Något i appen fungerar inte som det ska"
+title: "[Bugg]: "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Vilken version?
+      description: Står längst ned under Meny i appen, t.ex. "26.9.1 · beta".
+      placeholder: 26.9.1 · beta
+    validations:
+      required: true
+
+  - type: dropdown
+    id: device
+    attributes:
+      label: Vilken enhet och webbläsare?
+      options:
+        - iPhone (Safari)
+        - iPhone (Chrome)
+        - Android (Chrome)
+        - Android (annan webbläsare)
+        - Dator
+        - Vet inte / annat
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Vad hände?
+      description: Beskriv vad som gick fel. Klistra gärna in en skärmdump här om du har en (dra och släpp funkar).
+      placeholder: T.ex. "Jag tryckte på Logga pass och fick ett felmeddelande om..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Vad förväntade du dig skulle hända istället?
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Hur gör man för att få samma fel?
+      description: Om du kommer ihåg stegen - hjälper mycket för att hitta felet snabbt.
+      placeholder: |
+        1. Öppna appen
+        2. Tryck på...
+        3. ...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: tried-reload
+    attributes:
+      label: Redan provat
+      options:
+        - label: Jag har stängt och öppnat appen igen innan jag rapporterade detta
+          required: false
