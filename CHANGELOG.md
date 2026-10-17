@@ -6,6 +6,14 @@ fått, från första versionen till idag.
 
 ---
 
+## 26.10.2 · oktober 2026
+
+- 📲 **Lägg appen på hemskärmen** – på Android installerar du med ett tryck,
+  på iPhone visar appen hur du gör. Finns även under Meny.
+- 🔗 **Öppnad från Facebook eller Telegram?** Där tillåter inte Google
+  inloggning. Appen säger nu till och hjälper dig vidare till Safari eller
+  Chrome.
+
 ## 26.9.7 · september 2026
 
 - 📰 **Nyheter** visar en version i taget – tryck på en äldre för att fälla

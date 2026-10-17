@@ -70,6 +70,19 @@
         </div>
       </div>
       <div class="start-actions">
+        <!-- Öppnad i en annan apps inbyggda webbläsare: där fungerar inte Googles inloggning -->
+        <div id="inAppNotice" class="card inapp-card hidden">
+          <p class="install-head"><svg class="install-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"></path><line x1="10" y1="14" x2="20" y2="4"></line><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg><span id="inAppTitle">Öppna i webbläsaren</span></p>
+          <p class="install-text">Sidan är öppnad inuti en annan app. Där tillåter inte Google inloggning, och appen går inte att lägga på hemskärmen.</p>
+          <div id="inAppIosStep" class="install-step hidden">
+            <svg class="install-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg>
+            <span>Tryck på <strong>•••</strong> eller <strong>Dela</strong> och välj <strong>Öppna i Safari</strong></span>
+          </div>
+          <div class="install-actions">
+            <button type="button" id="inAppCopyBtn" class="btn btn-secondary">Kopiera länk</button>
+            <button type="button" id="inAppOpenBtn" class="btn btn-primary hidden">Öppna i Chrome</button>
+          </div>
+        </div>
         <p id="startIntro" class="start-intro">Dina träningspass, tävlingar och annat – direkt till ditt eget Google-kalkylark. Ingen annan har åtkomst.</p>
         <button id="signInBtn" class="btn btn-primary btn-wide start-btn" disabled>Logga in med Google</button>
         <p id="startHint" class="start-hint hidden">Google bekräftar att det är du. Du hålls inloggad en timme i taget.</p>
@@ -125,6 +138,20 @@
 
         <div id="queueRow" class="queue-row hidden"></div>
         <button id="logBtn" class="btn btn-primary log-btn" disabled>Välj vapen för att logga</button>
+
+        <!-- Installera som app: visas bara när det går och appen inte redan är installerad -->
+        <div id="installCard" class="card install-card hidden">
+          <p class="install-head"><svg class="install-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"></rect><line x1="11" y1="18" x2="13" y2="18"></line></svg><span id="installTitle">Installera Skyttelogg</span></p>
+          <p id="installText" class="install-text"></p>
+          <div id="installIosStep" class="install-step hidden">
+            <svg class="install-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"></path><polyline points="8 6 12 2 16 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+            <span>Tryck på <strong>•••</strong> och sedan <strong>Dela</strong> (eller direkt på <strong>Dela</strong>), scrolla ned och välj <strong>Lägg till på hemskärmen</strong></span>
+          </div>
+          <div class="install-actions">
+            <button type="button" id="installLaterBtn" class="btn btn-secondary">Inte nu</button>
+            <button type="button" id="installBtn" class="btn btn-primary hidden">Installera</button>
+          </div>
+        </div>
 
         <!-- Senaste loggningar -->
         <div class="section-row section-row--spaced">
@@ -235,6 +262,14 @@
 
         <h2 class="section-title section-title--spaced">Om appen</h2>
         <div class="menu-group">
+          <button type="button" id="menuInstallBtn" class="menu-row hidden">
+            <svg class="menu-icon menu-icon--accent" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"></rect><line x1="11" y1="18" x2="13" y2="18"></line></svg>
+            <span class="menu-label menu-label--stack">
+              <span>Installera som app</span>
+              <span class="menu-sub">Lägg till på hemskärmen</span>
+            </span>
+            <span class="menu-chev" aria-hidden="true">›</span>
+          </button>
           <button type="button" id="menuNewsBtn" class="menu-row">
             <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"></path></svg>
             <span class="menu-label">Nyheter</span>
@@ -467,6 +502,23 @@
         </div>
         <div class="overlay-actions">
           <button type="button" id="newsCloseBtn" class="btn btn-secondary">Stäng</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lägg på hemskärmen (iOS) -->
+    <div id="installOverlay" class="overlay hidden">
+      <div class="overlay-panel">
+        <h2>Lägg på hemskärmen</h2>
+        <p class="muted small sheet-intro">
+          Då startar Skyttelogg som en egen app med egen ikon, och appens inställningar ligger kvar även om du inte loggar på ett tag.
+        </p>
+        <div class="install-step">
+            <svg class="install-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"></path><polyline points="8 6 12 2 16 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+            <span>Tryck på <strong>•••</strong> och sedan <strong>Dela</strong> (eller direkt på <strong>Dela</strong>), scrolla ned och välj <strong>Lägg till på hemskärmen</strong></span>
+          </div>
+        <div class="overlay-actions">
+          <button type="button" id="installCloseBtn" class="btn btn-secondary">Stäng</button>
         </div>
       </div>
     </div>

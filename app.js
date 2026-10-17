@@ -8,7 +8,7 @@
 // ÅÅ.M.N: år, månad och löpnummer inom månaden. Räknas upp vid varje
 // leverans, även rättningar. Samma nummer i alpha och beta: uppflyttning
 // till den publicerade appen görs utan att ändra någon fil.
-const APP_VERSION = "26.9.7";
+const APP_VERSION = "26.10.2";
 // Den publicerade appen märks som beta så länge den utvecklas. Sätts till
 // false när appen anses färdig.
 const PUBLIC_BETA = true;
@@ -76,6 +76,7 @@ const SESSION_KEY = "skyttelogg_session";  // sparad inloggning, högst en timme
 const KNOWN_KEY = "skyttelogg_known";      // inloggad förut på enheten, ej utloggad
 const NEWS_SEEN_KEY = "skyttelogg_news_seen"; // senaste version vars nyheter visats
 const UNIT_PREF_KEY = "skyttelogg_units";      // senast använd enhet per vapennamn
+const INSTALL_HINT_KEY = "skyttelogg_install_hint"; // installationskortet dolt till (ms)
 
 let currentThemeId = "brass";
 
@@ -215,6 +216,7 @@ window.addEventListener("load", () => {
   document.getElementById("locationInput").value =
     localStorage.getItem(LOCATION_KEY) || DEFAULT_LOCATION;
   window.addEventListener("online", trySyncQueue);
+  renderInstallHint();
 
   if (CONFIG.ISSUES_URL) {
     const bug = document.getElementById("menuBugLink");
@@ -297,6 +299,7 @@ function showStartScreen() {
   document.getElementById("appView").classList.add("hidden");
   document.getElementById("bottomNav").classList.add("hidden");
   document.getElementById("signedOutView").classList.remove("hidden");
+  renderInAppNotice();
 }
 
 // Splashen visas minst 2 s så att animationen (ca 1,5 s) hinner klart,
@@ -466,6 +469,20 @@ function wireStaticEvents() {
   document.getElementById("menuNewsBtn").addEventListener("click", openNewsOverlay);
   document.getElementById("newsCloseBtn").addEventListener("click", closeNewsOverlay);
   wireBackdropClose("newsOverlay", closeNewsOverlay);
+
+  // Installera som app
+  document.getElementById("installBtn").addEventListener("click", promptInstall);
+  document.getElementById("installLaterBtn").addEventListener("click", snoozeInstallHint);
+  document.getElementById("menuInstallBtn").addEventListener("click", () => {
+    if (installMode() === "prompt") promptInstall();
+    else openInstallOverlay();
+  });
+  document.getElementById("installCloseBtn").addEventListener("click", closeInstallOverlay);
+  wireBackdropClose("installOverlay", closeInstallOverlay);
+
+  // Öppnad i en annan apps inbyggda webbläsare
+  document.getElementById("inAppOpenBtn").addEventListener("click", openInChrome);
+  document.getElementById("inAppCopyBtn").addEventListener("click", copyAppLink);
 
   // Meny → Logga ut (med bekräftelse)
   document.getElementById("menuSignOutBtn").addEventListener("click", confirmSignOut);
@@ -1900,6 +1917,161 @@ function closeThemeOverlay() {
   document.getElementById("themeOverlay").classList.add("hidden");
 }
 
+// ---------- Installera som app ----------
+// Kortet i Logga-vyn och raden i Meny visas bara när appen kan installeras
+// men inte redan körs installerad. Android (Chrome, Edge, Samsung Internet)
+// skickar beforeinstallprompt och får en riktig knapp. iOS har inget
+// motsvarande API, där visas instruktionen för Dela-menyn (i iOS 26
+// under •••). Övriga
+// webbläsare får ingenting. "Inte nu" döljer kortet en tid, menyraden finns
+// kvar.
+const INSTALL_SNOOZE_DAYS = 30;
+let deferredInstallPrompt = null;
+
+function isStandalone() {
+  return window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true;
+}
+
+// iPadOS utger sig för att vara en Mac, men har pekskärm.
+function isIos() {
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+}
+
+// "prompt" (Android), "ios" eller null när inget ska visas.
+function installMode() {
+  if (isStandalone() || inAppBrowser()) return null;
+  if (deferredInstallPrompt) return "prompt";
+  if (isIos()) return "ios";
+  return null;
+}
+
+function installHintSnoozed() {
+  try {
+    return Number(localStorage.getItem(INSTALL_HINT_KEY) || 0) > Date.now();
+  } catch (e) {
+    return false;
+  }
+}
+
+function renderInstallHint() {
+  const mode = installMode();
+  document.getElementById("menuInstallBtn").classList.toggle("hidden", !mode);
+  const card = document.getElementById("installCard");
+  if (!mode || installHintSnoozed()) {
+    card.classList.add("hidden");
+    return;
+  }
+  const ios = mode === "ios";
+  document.getElementById("installTitle").textContent =
+    ios ? "Lägg Skyttelogg på hemskärmen" : "Installera Skyttelogg";
+  document.getElementById("installText").textContent = ios
+    ? "Då startar den som en egen app med egen ikon, och appens inställningar ligger kvar även om du inte loggar på ett tag."
+    : "Då startar den som en egen app med egen ikon, utan webbläsarens adressfält.";
+  document.getElementById("installIosStep").classList.toggle("hidden", !ios);
+  document.getElementById("installBtn").classList.toggle("hidden", ios);
+  card.classList.remove("hidden");
+}
+
+function snoozeInstallHint() {
+  try {
+    localStorage.setItem(INSTALL_HINT_KEY, String(Date.now() + INSTALL_SNOOZE_DAYS * 86400000));
+  } catch (e) { /* ignoreras, kortet döljs ändå tills vidare */ }
+  document.getElementById("installCard").classList.add("hidden");
+}
+
+// Webbläsarens dialog kan bara visas en gång per händelse. Avbryter
+// användaren skickar webbläsaren normalt en ny händelse senare.
+async function promptInstall() {
+  const evt = deferredInstallPrompt;
+  if (!evt) return;
+  deferredInstallPrompt = null;
+  try {
+    evt.prompt();
+    await evt.userChoice;
+  } catch (e) { /* ignoreras */ }
+  renderInstallHint();
+}
+
+function openInstallOverlay() {
+  document.getElementById("installOverlay").classList.remove("hidden");
+}
+function closeInstallOverlay() {
+  document.getElementById("installOverlay").classList.add("hidden");
+}
+
+// ---------- Inbyggd webbläsare i en annan app ----------
+// Länkar i Facebook, Messenger, Instagram, Telegram m.fl. öppnas ofta i
+// appens egen webbläsare. Där blockerar Google inloggning
+// (disallowed_useragent) och appen går inte att installera. Android:
+// alla inbyggda WebViews har "; wv)" i användaragenten. iOS: inbyggda
+// webbläsare saknar "Safari/", liksom en installerad hemskärmsapp, som
+// därför undantas först. Inget blockeras: inloggningen finns kvar ifall
+// upptäckten slår fel.
+const IN_APP_MARKERS = /FBAN|FBAV|FB_IAB|Instagram|Line\/|Telegram/i;
+
+function inAppBrowser() {
+  if (isStandalone()) return null;
+  const ua = navigator.userAgent;
+  if (/Android/.test(ua) && (/; wv\)/.test(ua) || IN_APP_MARKERS.test(ua))) return "android";
+  if (isIos() && (IN_APP_MARKERS.test(ua) || !/Safari\//.test(ua))) return "ios";
+  return null;
+}
+
+let inAppTracked = false;
+
+function renderInAppNotice() {
+  const mode = inAppBrowser();
+  document.getElementById("inAppNotice").classList.toggle("hidden", !mode);
+  if (!mode) return;
+  const android = mode === "android";
+  document.getElementById("inAppTitle").textContent = android ? "Öppna i Chrome" : "Öppna i Safari";
+  document.getElementById("inAppIosStep").classList.toggle("hidden", android);
+  document.getElementById("inAppOpenBtn").classList.toggle("hidden", !android);
+  document.getElementById("startIntro").classList.add("hidden");
+  const btn = document.getElementById("signInBtn");
+  btn.classList.remove("btn-primary");
+  btn.classList.add("btn-secondary");
+  btn.textContent = "Logga in med Google ändå";
+  if (!inAppTracked) {
+    inAppTracked = true;
+    trackEvent("inbyggd-webblasare");
+  }
+}
+
+// Ber Android öppna samma adress i Chrome. Fungerar i många men inte alla
+// appar; Kopiera länk är reserven.
+function openInChrome() {
+  const u = new URL(location.href);
+  location.href = `intent://${u.host}${u.pathname}#Intent;scheme=https;` +
+    `package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(u.origin + u.pathname)};end`;
+}
+
+async function copyAppLink() {
+  const link = location.origin + location.pathname;
+  try {
+    await navigator.clipboard.writeText(link);
+    showToast("Länken är kopierad. Klistra in den i webbläsaren.", false);
+  } catch (e) {
+    showToast("Kunde inte kopiera. Adressen är " + link, true);
+  }
+}
+
+// Registreras direkt när skriptet läses, eftersom händelsen kan komma
+// innan sidan laddats klart.
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (document.readyState !== "loading") renderInstallHint();
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  trackEvent("app-installerad");
+  renderInstallHint();
+});
+
 // ---------- Nyheter ----------
 // Innehållet hämtas från CHANGELOG.md bredvid appen, så att changeloggen på
 // GitHub och i appen alltid är samma text. Stöder det som filen använder:
@@ -2706,7 +2878,6 @@ async function submitLog() {
 
   if (currentMode === "training" || currentMode === "competition") {
     activity = (currentMode === "competition") ? "Tävling" : "Träning";
-    let customError = false;
     let shotsError = false;
 
     document.querySelectorAll("#weaponList .weapon-chip.selected").forEach(chip => {
@@ -2730,7 +2901,6 @@ async function submitLog() {
       rows.push([dateVal, activity, weapon, amountVal, location, note]);
     });
 
-    if (customError) return showToast("Skriv in namnet på det valfria vapnet, eller bocka ur raden.", true);
     if (shotsError) return showToast("Ange antal skott för alla ibockade vapen.", true);
     if (rows.length === 0) return showToast("Välj minst ett vapen!", true);
   } else {
