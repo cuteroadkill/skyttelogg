@@ -8,7 +8,7 @@
 // ÅÅ.M.N: år, månad och löpnummer inom månaden. Räknas upp vid varje
 // leverans, även rättningar. Samma nummer i alpha och beta: uppflyttning
 // till den publicerade appen görs utan att ändra någon fil.
-const APP_VERSION = "26.10.1";
+const APP_VERSION = "26.10.2";
 // Den publicerade appen märks som beta så länge den utvecklas. Sätts till
 // false när appen anses färdig.
 const PUBLIC_BETA = true;
@@ -1921,7 +1921,8 @@ function closeThemeOverlay() {
 // Kortet i Logga-vyn och raden i Meny visas bara när appen kan installeras
 // men inte redan körs installerad. Android (Chrome, Edge, Samsung Internet)
 // skickar beforeinstallprompt och får en riktig knapp. iOS har inget
-// motsvarande API, där visas instruktionen för Dela-menyn. Övriga
+// motsvarande API, där visas instruktionen för Dela-menyn (i iOS 26
+// under •••). Övriga
 // webbläsare får ingenting. "Inte nu" döljer kortet en tid, menyraden finns
 // kvar.
 const INSTALL_SNOOZE_DAYS = 30;
