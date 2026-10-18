@@ -96,6 +96,21 @@
       <!-- ===== Vy: Logga ===== -->
       <section id="viewLog" class="view">
 
+        <!-- Installera som app: överst så att det syns utan att scrolla. Visas bara
+             när det går och appen inte redan är installerad. -->
+        <div id="installCard" class="card install-card hidden">
+          <p class="install-head"><svg class="install-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"></rect><line x1="11" y1="18" x2="13" y2="18"></line></svg><span id="installTitle">Installera Skyttelogg</span></p>
+          <p id="installText" class="install-text"></p>
+          <div id="installIosStep" class="install-step hidden">
+            <svg class="install-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"></path><polyline points="8 6 12 2 16 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+            <span>Tryck på <strong>•••</strong> och sedan <strong>Dela</strong> (eller direkt på <strong>Dela</strong>), scrolla ned och välj <strong>Lägg till på hemskärmen</strong></span>
+          </div>
+          <div class="install-actions">
+            <button type="button" id="installLaterBtn" class="btn btn-secondary">Inte nu</button>
+            <button type="button" id="installBtn" class="btn btn-primary hidden">Installera</button>
+          </div>
+        </div>
+
         <h2 class="section-title">Nytt pass</h2>
         <div class="card">
           <div class="date-chips" role="group" aria-label="Datum">
@@ -138,20 +153,6 @@
 
         <div id="queueRow" class="queue-row hidden"></div>
         <button id="logBtn" class="btn btn-primary log-btn" disabled>Välj vapen för att logga</button>
-
-        <!-- Installera som app: visas bara när det går och appen inte redan är installerad -->
-        <div id="installCard" class="card install-card hidden">
-          <p class="install-head"><svg class="install-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"></rect><line x1="11" y1="18" x2="13" y2="18"></line></svg><span id="installTitle">Installera Skyttelogg</span></p>
-          <p id="installText" class="install-text"></p>
-          <div id="installIosStep" class="install-step hidden">
-            <svg class="install-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"></path><polyline points="8 6 12 2 16 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
-            <span>Tryck på <strong>•••</strong> och sedan <strong>Dela</strong> (eller direkt på <strong>Dela</strong>), scrolla ned och välj <strong>Lägg till på hemskärmen</strong></span>
-          </div>
-          <div class="install-actions">
-            <button type="button" id="installLaterBtn" class="btn btn-secondary">Inte nu</button>
-            <button type="button" id="installBtn" class="btn btn-primary hidden">Installera</button>
-          </div>
-        </div>
 
         <!-- Senaste loggningar -->
         <div class="section-row section-row--spaced">
