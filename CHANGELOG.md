@@ -6,6 +6,11 @@ fått, från första versionen till idag.
 
 ---
 
+## 26.10.3 · oktober 2026
+
+- 📲 Tipset om att lägga appen på hemskärmen ligger nu överst, så att det
+  syns direkt.
+
 ## 26.10.2 · oktober 2026
 
 - 📲 **Lägg appen på hemskärmen** – på Android installerar du med ett tryck,

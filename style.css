@@ -509,7 +509,7 @@ body:has(#splash:not(.hidden)) .topbar { display: none; }
 .weapon-chip--custom .chip-controls { padding-top: 0; }
 
 /* ---------- Installera som app ---------- */
-.install-card { margin-top: 18px; }
+.install-card { margin-bottom: 8px; }
 .install-head {
   display: flex;
   align-items: center;
