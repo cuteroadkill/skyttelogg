@@ -139,6 +139,12 @@
           <div id="weaponList" class="weapon-grid"></div>
         </div>
 
+        <!-- Resultat och medalj: bara för Tävling, en post per valt vapen -->
+        <div id="resultBlock" class="hidden">
+          <h2 class="section-title">Resultat <span class="section-hint">· valfritt</span></h2>
+          <div id="resultList" class="card result-card"></div>
+        </div>
+
         <h2 class="section-title">Detaljer</h2>
         <div class="card">
           <div class="field-group">
@@ -206,6 +212,18 @@
           <div class="summary-box"><span id="statsComps" class="summary-num summary-num--accent mono">–</span><span class="summary-cap">tävlingar</span></div>
         </div>
 
+        <div id="statsMedalBlock" class="hidden">
+          <div class="section-row section-row--medals">
+            <h2 class="section-title">Medaljer</h2>
+            <span class="medal-legend" aria-hidden="true">
+              <span><span class="medal-dot medal-dot--gold"></span>Guld</span>
+              <span><span class="medal-dot medal-dot--silver"></span>Silver</span>
+              <span><span class="medal-dot medal-dot--bronze"></span>Brons</span>
+            </span>
+          </div>
+          <div id="statsMedalList" class="card medal-card"></div>
+        </div>
+
         <h2 class="section-title section-title--spaced">Per vapen</h2>
         <div id="statsWeaponList" class="card-list">
           <p class="muted small">Laddar...</p>
@@ -218,7 +236,7 @@
             <svg class="export-card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="14 3 14 9 20 9"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
             <div>
               <div class="export-card-title">Exportera till PDF</div>
-              <p class="export-card-text">En sammanställning per vapen för vald period: antal pass, varav tävlingar, och mängd ammunition, följd av alla loggade pass. Bra som underlag när föreningen ska intyga din skytteaktivitet.</p>
+              <p class="export-card-text">En sammanställning per vapen för vald period: antal pass, varav tävlingar och medaljer, och mängd ammunition, följd av alla loggade pass. Bra som underlag när föreningen ska intyga din skytteaktivitet.</p>
             </div>
           </div>
           <button type="button" id="statsExportBtn" class="btn btn-primary btn-wide">Skapa PDF</button>
@@ -346,6 +364,17 @@
         <div class="field-group">
           <label for="editNote">Notering</label>
           <input type="text" id="editNote" class="input">
+        </div>
+        <!-- Visas bara när aktiviteten är Tävling -->
+        <div id="editResultBlock" class="hidden">
+          <div class="field-group">
+            <label for="editResult">Resultat</label>
+            <input type="text" id="editResult" class="input" maxlength="60" placeholder="Poäng eller placering">
+          </div>
+          <div class="field-group">
+            <span class="field-label">Medalj</span>
+            <div id="editMedalSlot"></div>
+          </div>
         </div>
 
         <div class="overlay-actions">
