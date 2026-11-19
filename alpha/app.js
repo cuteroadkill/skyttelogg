@@ -8,7 +8,7 @@
 // ÅÅ.M.N: år, månad och löpnummer inom månaden. Räknas upp vid varje
 // leverans, även rättningar. Samma nummer i alpha och beta: uppflyttning
 // till den publicerade appen görs utan att ändra någon fil.
-const APP_VERSION = "26.11.1";
+const APP_VERSION = "26.11.2";
 // Den publicerade appen märks som beta så länge den utvecklas. Sätts till
 // false när appen anses färdig.
 const PUBLIC_BETA = true;
@@ -88,6 +88,11 @@ const STATS_TAB_NAME = "Statistik";
 const DEFAULT_BOX_SIZE = 50;     // skott per ask när inget annat angetts
 const MAX_BOX_SIZE = 1000;
 const HEADER_ROW = ["Datum", "Aktivitet", "Vapengrupp/Typ", "Antal skott", "Plats/Förening", "Notering"];
+// Kolumn G och H, efter A–F. Används bara för tävlingspass och skrivs bara
+// när arket inte redan har annat innehåll där (se ensureResultColumns).
+const RESULT_HEADERS = ["Resultat", "Medalj"];
+const MEDALS = ["Guld", "Silver", "Brons"];
+const MEDAL_CLASS = { Guld: "gold", Silver: "silver", Brons: "bronze" };
 const JSPDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.0.0/jspdf.umd.min.js";
 const GAPI_URL = "https://apis.google.com/js/api.js";
 
@@ -119,6 +124,7 @@ let connecting = false;        // true medan connectSheet provar ett (nytt) ark
 let sheetProblem = null;       // null, "unreachable" (403/404) eller "trashed"
 let statsSheetGridId = null;   // numeriskt sheetId för "Statistik", null = saknas
 let protectedKeys = new Set(); // beskrivningar på befintliga skydd i arket
+let resultColumnsFree = false; // true när G/H är appens (tomma eller med appens rubriker)
 let currentMode = "training";
 let currentView = "log";
 
@@ -161,9 +167,11 @@ function cellToIsoDate(v) {
   }
   return v === undefined || v === null ? "" : String(v).trim();
 }
+// A–F plus resultat (G) och medalj (H). Raderna läses alltid i hela bredden
+// A–H, så att jämförelser före redigering och radering gäller hela passet.
 function normalizeRow(row) {
   const out = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     const v = row[i];
     if (i === 0) out.push(cellToIsoDate(v));
     else out.push(v === undefined || v === null ? "" : String(v));
@@ -181,6 +189,29 @@ function activityType(activity) {
   if (a === "Träning") return "training";
   if (a === "Tävling") return "competition";
   return "other";
+}
+
+function normalizeMedal(v) {
+  const s = String(v || "").trim().toLowerCase();
+  return MEDALS.find(m => m.toLowerCase() === s) || "";
+}
+
+// Resultat och medalj för en rad. Tomt för allt som inte är tävling, och
+// när G/H i arket används till annat.
+function rowResult(row) {
+  if (!resultColumnsFree || activityType(row[1]) !== "competition") return { result: "", medal: "" };
+  return { result: String(row[6] || "").trim(), medal: normalizeMedal(row[7]) };
+}
+
+// Inledande ' gör resultatet till text, så att t.ex. "47/50" inte tolkas
+// som ett datum. Tecknet syns inte i cellen och kommer inte med vid läsning.
+function resultCell(text) {
+  const s = String(text || "").trim();
+  return s ? "'" + s : "";
+}
+
+function medalLine(result, medal) {
+  return [medal, result].filter(Boolean).join(" · ");
 }
 
 // Laddar ett externt skript en gång, vid behov (jsPDF, Google Picker).
@@ -423,6 +454,10 @@ function wireStaticEvents() {
   document.getElementById("editSaveBtn").addEventListener("click", saveEditedRow);
   document.getElementById("editDeleteBtn").addEventListener("click", deleteEditedRow);
   wireBackdropClose("editOverlay", closeEditOverlay);
+  const editMedalSlot = document.getElementById("editMedalSlot");
+  editMedalSlot.innerHTML = medalSwitchHtml("Medalj");
+  wireMedalSwitch(editMedalSlot.firstElementChild);
+  document.getElementById("editActivity").addEventListener("input", updateEditResultBlock);
 
   // Statistik → PDF-export
   document.getElementById("statsExportBtn").addEventListener("click", openExportOverlay);
@@ -728,6 +763,9 @@ async function connectSheet(id) {
   }
   await ensureWeaponsSheet();
   try { await ensureProtections(); } catch (e) { /* ej kritiskt */ }
+  // Går läsningen fel stängs resultat och medalj av tills nästa anslutning,
+  // hellre än att skriva i kolumner vi inte vet vad de innehåller.
+  try { await ensureResultColumns(); } catch (e) { resultColumnsFree = false; }
   await loadWeapons();
   buildWeaponList();
   if (!CONFIG.SPREADSHEET_ID) localStorage.setItem(LOCAL_SHEET_KEY, spreadsheetId);
@@ -795,8 +833,8 @@ async function createSpreadsheet() {
   const gridId = firstSheet ? firstSheet.sheetId : 0;
 
   await sheetsFetch(
-    `${id}/values/${a1(LOG_TAB_NAME, "A1:F1")}?valueInputOption=RAW`,
-    { method: "PUT", body: JSON.stringify({ values: [HEADER_ROW] }) }
+    `${id}/values/${a1(LOG_TAB_NAME, "A1:H1")}?valueInputOption=RAW`,
+    { method: "PUT", body: JSON.stringify({ values: [[...HEADER_ROW, ...RESULT_HEADERS]] }) }
   );
 
   // Fetstil på rubrikraden. Ett fel här stoppar inte skapandet.
@@ -917,7 +955,7 @@ async function sheetsFetch(path, options = {}) {
   return res.json();
 }
 
-// Läser loggrader som rådata och normaliserar dem till 6 textceller med
+// Läser loggrader som rådata och normaliserar dem till 8 textceller (A–H) med
 // datum i ISO-format (ÅÅÅÅ-MM-DD), oberoende av arkets språkinställning.
 async function readLogRows(range) {
   const data = await sheetsFetch(
@@ -1000,6 +1038,39 @@ async function ensureProtections() {
       { method: "PUT", body: JSON.stringify({ values: WEAPONS_HELP }) }
     );
   }
+}
+
+// ---------- Kolumner för resultat och medalj ----------
+// G och H tas bara i bruk om de är tomma eller redan har appens rubriker.
+// Har användaren eget innehåll där används de inte alls: varken rubriker
+// eller pass skrivs dit, och inget i dem visas som resultat. Saknade
+// rubriker skrivs bara i tomma celler.
+async function ensureResultColumns() {
+  resultColumnsFree = false;
+  resultSignature = ""; // kortet ritas om för det här arket
+  const data = await sheetsFetch(
+    `${spreadsheetId}/values/${a1(sheetTitle, "G1:H")}?valueRenderOption=UNFORMATTED_VALUE`
+  );
+  const values = data.values || [];
+  const head = values[0] || [];
+  const cell = (r, i) => String(r[i] === undefined || r[i] === null ? "" : r[i]).trim();
+  const g1 = cell(head, 0);
+  const h1 = cell(head, 1);
+  if ((g1 && g1 !== RESULT_HEADERS[0]) || (h1 && h1 !== RESULT_HEADERS[1])) return;
+
+  // Tom rubrik men innehåll under: kolumnen används redan till annat.
+  const hasData = i => values.slice(1).some(r => cell(r, i) !== "");
+  if ((!g1 && hasData(0)) || (!h1 && hasData(1))) return;
+
+  if (!g1 || !h1) {
+    const range = !g1 && !h1 ? "G1:H1" : (!g1 ? "G1" : "H1");
+    const row = !g1 && !h1 ? RESULT_HEADERS : [!g1 ? RESULT_HEADERS[0] : RESULT_HEADERS[1]];
+    await sheetsFetch(
+      `${spreadsheetId}/values/${a1(sheetTitle, range)}?valueInputOption=RAW`,
+      { method: "PUT", body: JSON.stringify({ values: [row] }) }
+    );
+  }
+  resultColumnsFree = true;
 }
 
 // Skapar fliken "Vapen" om den inte redan finns, med standardvapnen.
@@ -1086,7 +1157,7 @@ async function loadRecent() {
   try {
     // Arket sorteras nyast-först vid varje loggning (se sortSheetByDateDesc),
     // så rad 2–9 är de åtta senaste.
-    const rows = await readLogRows("A2:F9");
+    const rows = await readLogRows("A2:H9");
     const cards = [];
     rows.forEach((row, i) => {
       if (row.every(c => !c.trim())) return;
@@ -1111,15 +1182,22 @@ function wireCardClicks(container) {
   });
 }
 
+function medalDot(medal) {
+  return medal ? `<span class="medal-dot medal-dot--${MEDAL_CLASS[medal]}" aria-hidden="true"></span>` : "";
+}
+
 function rowToCard(row, rowNumber) {
   const [date, activity, weapon, amount, , note] = row;
   const line2 = [weapon, amount].filter(Boolean).join(" · ");
+  const { result, medal } = rowResult(row);
+  const line3 = medalLine(result, medal);
   return `
     <button type="button" class="recent-item" data-row="${rowNumber}">
       <span class="recent-date mono">${escapeHtml(date || "")}</span>
       <span class="recent-body">
         <span class="recent-activity" style="display:block">${escapeHtml(activity || "")}</span>
         ${line2 ? `<span class="recent-detail muted" style="display:block">${escapeHtml(line2)}</span>` : ""}
+        ${line3 ? `<span class="recent-detail muted" style="display:block">${medalDot(medal)}${escapeHtml(line3)}</span>` : ""}
         ${note ? `<span class="recent-note muted" style="display:block">${escapeHtml(note)}</span>` : ""}
       </span>
     </button>`;
@@ -1140,7 +1218,7 @@ async function ensureAllRows() {
   if (!allRowsLoading) {
     allRowsLoading = (async () => {
       try {
-        const rows = await readLogRows("A2:F");
+        const rows = await readLogRows("A2:H");
         const parsed = [];
         rows.forEach((row, i) => {
           if (!row[0] || row.every(c => !c.trim())) return;
@@ -1330,6 +1408,7 @@ function computeStats(rows) {
   const sessions = new Set();
   const comps = new Set();
   const months = {};
+  const medalYears = {}; // år -> { Guld, Silver, Brons }
   let since = null;
   let totalShots = 0;
   let totalApprox = false;
@@ -1347,6 +1426,14 @@ function computeStats(rows) {
       months[mk] = { training: new Set(), competition: new Set(), other: new Set(), shots: 0 };
     }
     months[mk][type].add(date);
+
+    // En medalj per rad, och en rad per vapen och tävlingspass.
+    const { medal } = rowResult(row);
+    if (medal) {
+      const yk = date.slice(0, 4);
+      if (!medalYears[yk]) medalYears[yk] = { Guld: 0, Silver: 0, Brons: 0 };
+      medalYears[yk][medal]++;
+    }
 
     // Annat-aktiviteter utan mängd (t.ex. äldre rader med fritext i
     // vapenkolumnen) räknas inte som vapen.
@@ -1388,7 +1475,8 @@ function computeStats(rows) {
       competition: months[k].competition.size,
       other: months[k].other.size,
       shots: months[k].shots
-    }))
+    })),
+    medalYears: Object.keys(medalYears).sort().reverse().map(y => ({ year: y, ...medalYears[y] }))
   };
 }
 
@@ -1414,6 +1502,7 @@ function renderStats(stats) {
   document.getElementById("statsPass").textContent = formatCount(stats.passCount, false);
   document.getElementById("statsShots").textContent = formatCount(stats.totalShots, stats.totalApprox);
   document.getElementById("statsComps").textContent = formatCount(stats.compCount, false);
+  renderMedalStats(stats.medalYears);
 
   const list = document.getElementById("statsWeaponList");
   if (stats.weapons.length === 0) {
@@ -1438,6 +1527,22 @@ function renderStats(stats) {
   }).join("");
 }
 
+// Medaljer per år, nyast först. Visas bara när det finns minst en.
+function renderMedalStats(years) {
+  const block = document.getElementById("statsMedalBlock");
+  block.classList.toggle("hidden", years.length === 0);
+  if (years.length === 0) return;
+  const order = ["Guld", "Silver", "Brons"];
+  document.getElementById("statsMedalList").innerHTML = years.map(y => `
+    <div class="medal-year">
+      <span class="medal-year-label mono">${escapeHtml(y.year)}</span>
+      ${order.map(m => `
+        <span class="medal-count${y[m] ? "" : " medal-count--zero"}" aria-label="${y[m]} ${m.toLowerCase()}">
+          ${medalDot(m)}<span class="mono">${y[m]}</span>
+        </span>`).join("")}
+    </div>`).join("");
+}
+
 // Fliken Statistik ägs av appen och skrivs om helt. Fel här påverkar inte
 // statistiken i appen och visas därför inte.
 async function writeStatsSheet(stats) {
@@ -1448,6 +1553,11 @@ async function writeStatsSheet(stats) {
     ["Månad", "Träning (dagar)", "Tävling (dagar)", "Annat (dagar)", "Skott"],
     ...stats.months.map(m => [m.month, m.training, m.competition, m.other, Math.round(m.shots)]),
     [],
+    ...(stats.medalYears.length ? [
+      ["År", "Guld", "Silver", "Brons"],
+      ...stats.medalYears.map(y => [y.year, y.Guld, y.Silver, y.Brons]),
+      []
+    ] : []),
     ["Skott från pass i askar är beräknade med askstorleken i fliken Vapen."]
   ];
   const json = JSON.stringify(table);
@@ -1494,7 +1604,7 @@ async function writeStatsSheet(stats) {
 // ---------- Skriva ----------
 async function appendRows(rows) {
   await sheetsFetch(
-    `${spreadsheetId}/values/${a1(sheetTitle, "A:F")}:append?valueInputOption=USER_ENTERED`,
+    `${spreadsheetId}/values/${a1(sheetTitle, "A:H")}:append?valueInputOption=USER_ENTERED`,
     { method: "POST", body: JSON.stringify({ values: rows.map(sanitizeRow) }) }
   );
 }
@@ -1817,6 +1927,96 @@ function updateLogButton() {
     btn.textContent = "Logga pass";
     btn.disabled = logInProgress || !document.getElementById("activityTypeInput").value.trim();
   }
+  renderResultCard();
+}
+
+// ---------- Resultat och medalj (Tävling) ----------
+// En post per valt vapen, eftersom varje vapen blir en egen rad i arket.
+// Det som skrivits sparas per vapen medan formuläret är öppet, så att kortet
+// kan ritas om när vapen väljs eller väljs bort.
+const resultState = new Map(); // vapennyckel -> { result, medal }
+let resultSignature = "";      // vad kortet senast ritades för
+
+function chipKey(chip) {
+  return chip.classList.contains("weapon-chip--custom") ? "__custom" : chip.dataset.weapon;
+}
+
+function chipName(chip) {
+  const custom = chip.querySelector(".custom-name");
+  return custom ? custom.value.trim() : chip.dataset.weapon;
+}
+
+function medalSwitchHtml(label) {
+  const options = ["", "Brons", "Silver", "Guld"];
+  return `<div class="medal-switch" role="radiogroup" aria-label="${escapeHtml(label)}">` +
+    options.map(m => `<button type="button" class="medal-btn${m ? " medal-btn--" + MEDAL_CLASS[m] : ""}" data-medal="${m}" role="radio" aria-checked="false">${m || "Ingen"}</button>`).join("") +
+    `</div>`;
+}
+
+function setMedalSwitch(sw, medal) {
+  sw.querySelectorAll(".medal-btn").forEach(b => {
+    const on = b.dataset.medal === medal;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-checked", on ? "true" : "false");
+  });
+}
+
+function getMedalSwitch(sw) {
+  const b = sw.querySelector(".medal-btn.active");
+  return b ? b.dataset.medal : "";
+}
+
+function wireMedalSwitch(sw, onChange) {
+  sw.addEventListener("click", e => {
+    const b = e.target.closest(".medal-btn");
+    if (!b) return;
+    setMedalSwitch(sw, b.dataset.medal);
+    if (onChange) onChange(b.dataset.medal);
+  });
+}
+
+function renderResultCard() {
+  const block = document.getElementById("resultBlock");
+  const chips = currentMode === "competition" ? selectedWeaponChips() : [];
+  block.classList.toggle("hidden", chips.length === 0);
+  if (chips.length === 0) return;
+
+  const list = document.getElementById("resultList");
+  if (!resultColumnsFree) {
+    if (resultSignature !== "blocked") {
+      list.innerHTML = `<p class="result-blocked">Kolumn G och H i ditt ark används redan till annat, så resultat och medalj kan inte sparas. Töm kolumnerna och öppna appen igen för att använda funktionen.</p>`;
+      resultSignature = "blocked";
+    }
+    return;
+  }
+
+  const entries = chips.map(c => ({ key: chipKey(c), name: chipName(c) }));
+  const signature = JSON.stringify(entries);
+  if (signature === resultSignature) return;
+  resultSignature = signature;
+
+  // Bortvalda vapen glöms, så att ett omval börjar tomt.
+  const keys = new Set(entries.map(e => e.key));
+  Array.from(resultState.keys()).forEach(k => { if (!keys.has(k)) resultState.delete(k); });
+
+  list.innerHTML = entries.map(e => `
+    <div class="result-entry" data-key="${escapeHtml(e.key)}">
+      <div class="result-weapon">${escapeHtml(e.name)}</div>
+      <input type="text" class="input result-input" maxlength="60" placeholder="Poäng eller placering" aria-label="${escapeHtml("Resultat, " + e.name)}">
+      ${medalSwitchHtml("Medalj, " + e.name)}
+    </div>`).join("");
+
+  list.querySelectorAll(".result-entry").forEach(el => {
+    const key = el.dataset.key;
+    const state = resultState.get(key) || { result: "", medal: "" };
+    resultState.set(key, state);
+    const input = el.querySelector(".result-input");
+    input.value = state.result;
+    input.addEventListener("input", () => { state.result = input.value; });
+    const sw = el.querySelector(".medal-switch");
+    setMedalSwitch(sw, state.medal);
+    wireMedalSwitch(sw, medal => { state.medal = medal; });
+  });
 }
 
 // ---------- Tema ----------
@@ -2463,6 +2663,8 @@ function resetForm() {
     if (chip.classList.contains("weapon-chip--custom")) collapseCustomChip(chip);
     else if (chip.classList.contains("selected")) setChipSelected(chip, false);
   });
+  resultState.clear();
+  resultSignature = "";
   setMode("training");
 }
 
@@ -2481,7 +2683,17 @@ function openEditOverlay(rowNumber) {
   document.getElementById("editLocation").value = location || DEFAULT_LOCATION;
   document.getElementById("editAmount").value = amount || "";
   document.getElementById("editNote").value = note || "";
+  const { result, medal } = rowResult(row);
+  document.getElementById("editResult").value = result;
+  setMedalSwitch(document.querySelector("#editMedalSlot .medal-switch"), medal);
+  updateEditResultBlock();
   document.getElementById("editOverlay").classList.remove("hidden");
+}
+
+function updateEditResultBlock() {
+  const show = resultColumnsFree &&
+    activityType(document.getElementById("editActivity").value) === "competition";
+  document.getElementById("editResultBlock").classList.toggle("hidden", !show);
 }
 
 function closeEditOverlay() {
@@ -2494,7 +2706,7 @@ function closeEditOverlay() {
 // kontrollera därför att raden fortfarande är exakt densamma innan vi
 // skriver över eller raderar den.
 async function assertRowUnchanged(rowNumber) {
-  const [current] = await readLogRows(`A${rowNumber}:F${rowNumber}`);
+  const [current] = await readLogRows(`A${rowNumber}:H${rowNumber}`);
   const cached = rowCache[rowNumber];
   if (!current || !cached || !sameRow(current, cached)) {
     const err = new Error("Arket har ändrats sedan listan laddades. Listan är uppdaterad — öppna passet igen.");
@@ -2527,11 +2739,23 @@ async function saveEditedRow() {
 
   const btn = document.getElementById("editSaveBtn");
   btn.disabled = true;
+  // G/H skrivs bara när de är appens. Är passet inte längre en tävling
+  // töms de, så att ingen medalj blir kvar på t.ex. ett träningspass.
+  const values = [date, activity, weapon, amount, location, note];
+  let lastCol = "F";
+  if (resultColumnsFree) {
+    const isComp = activityType(activity) === "competition";
+    const result = isComp ? document.getElementById("editResult").value.trim() : "";
+    const medal = isComp ? normalizeMedal(getMedalSwitch(document.querySelector("#editMedalSlot .medal-switch"))) : "";
+    values.push(resultCell(result), medal);
+    lastCol = "H";
+  }
+
   try {
     await assertRowUnchanged(editingRow);
     await sheetsFetch(
-      `${spreadsheetId}/values/${a1(sheetTitle, `A${editingRow}:F${editingRow}`)}?valueInputOption=USER_ENTERED`,
-      { method: "PUT", body: JSON.stringify({ values: [sanitizeRow([date, activity, weapon, amount, location, note])] }) }
+      `${spreadsheetId}/values/${a1(sheetTitle, `A${editingRow}:${lastCol}${editingRow}`)}?valueInputOption=USER_ENTERED`,
+      { method: "PUT", body: JSON.stringify({ values: [sanitizeRow(values)] }) }
     );
   } catch (e) {
     handleEditError(e);
@@ -2605,9 +2829,10 @@ function buildSummary(rows) {
     // Normalisera bort dubbla mellanslag, så att olika skrivsätt slås ihop.
     const weapon = (rawWeapon || "").replace(/\s+/g, " ").trim();
     if (weapon) {
-      if (!weaponStats[weapon]) weaponStats[weapon] = { sessions: 0, tavling: 0, askTotal: 0, skottTotal: 0 };
+      if (!weaponStats[weapon]) weaponStats[weapon] = { sessions: 0, tavling: 0, medaljer: 0, askTotal: 0, skottTotal: 0 };
       weaponStats[weapon].sessions++;
       if (activity === "Tävling") weaponStats[weapon].tavling++;
+      if (rowResult(row).medal) weaponStats[weapon].medaljer++;
       const parsed = parseAmount(amount);
       if (parsed.unit === "skott") weaponStats[weapon].skottTotal += parsed.value;
       else if (parsed.unit === "ask") weaponStats[weapon].askTotal += parsed.value;
@@ -2696,7 +2921,7 @@ async function generatePdf() {
       throw new Error("Kunde inte ladda PDF-verktyget. Kontrollera uppkopplingen.");
     }
 
-    const rows = (await readLogRows("A2:F"))
+    const rows = (await readLogRows("A2:H"))
       .filter(r => r[0] && r[0] >= from && r[0] <= to)
       .sort((a, b) => a[0].localeCompare(b[0])); // kronologisk i PDF:en, äldst först
 
@@ -2761,7 +2986,8 @@ function buildPdf(rows, from, to) {
     weaponNames.forEach(name => {
       const s = weaponStats[name];
       const passText = s.sessions === 1 ? "1 pass" : `${s.sessions} pass`;
-      const tavlingText = s.tavling > 0 ? ` (varav ${s.tavling} tävling)` : "";
+      const medalText = s.medaljer > 0 ? `, ${s.medaljer} ${s.medaljer === 1 ? "medalj" : "medaljer"}` : "";
+      const tavlingText = s.tavling > 0 ? ` (varav ${s.tavling} tävling${medalText})` : "";
       const askText = s.askTotal > 0
         ? `${fractionText(s.askTotal)} ${s.askTotal > 1 ? "askar" : "ask"}`
         : "";
@@ -2828,7 +3054,10 @@ function buildPdf(rows, from, to) {
 
   rows.forEach(row => {
     const [date, activity, weapon, amount, , note] = row;
-    const cells = [date || "", activity || "", weapon || "", amount || "", note || ""];
+    // Medalj och resultat först i noteringen, så att kolumnerna är oförändrade.
+    const { result, medal } = rowResult(row);
+    const noteText = [medalLine(result, medal), note].filter(Boolean).join(" · ");
+    const cells = [date || "", activity || "", weapon || "", amount || "", noteText];
 
     const splitCells = cells.map((text, idx) => doc.splitTextToSize(text, cols[idx].w));
     const rowLines = Math.max(...splitCells.map(lines => lines.length), 1);
@@ -2899,7 +3128,17 @@ async function submitLog() {
         amountVal = `${shots} skott`;
       }
 
-      rows.push([dateVal, activity, weapon, amountVal, location, note]);
+      // Resultat och medalj bara när något angetts: övriga rader har samma
+      // format som tidigare (A–F).
+      const state = currentMode === "competition" && resultColumnsFree
+        ? resultState.get(chipKey(chip)) : null;
+      const result = state ? state.result.trim() : "";
+      const medal = state ? normalizeMedal(state.medal) : "";
+      if (result || medal) {
+        rows.push([dateVal, activity, weapon, amountVal, location, note, resultCell(result), medal]);
+      } else {
+        rows.push([dateVal, activity, weapon, amountVal, location, note]);
+      }
     });
 
     if (shotsError) return showToast("Ange antal skott för alla ibockade vapen.", true);
