@@ -6,6 +6,11 @@ fått, från första versionen till idag.
 
 ---
 
+## 26.11.1 · november 2026
+
+- 🧾 Har du egna anteckningar i kolumner efter Notering i arket? De följer
+  nu med rätt pass när appen sorterar loggboken.
+
 ## 26.10.3 · oktober 2026
 
 - 📲 Tipset om att lägga appen på hemskärmen ligger nu överst, så att det
