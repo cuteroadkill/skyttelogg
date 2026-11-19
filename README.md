@@ -121,6 +121,10 @@ med slutet av adressen när arket är öppet i Google Sheets.
   Kolumnerna är, i exakt denna ordning (A–F):
   `Datum | Aktivitet | Vapengrupp/Typ | Antal skott | Plats/Förening | Notering`.
   Appen skriver efter **position**, inte rubriknamn — flytta inte kolumnerna.
+- **Resultat och medalj** för tävlingspass sparas i kolumn G (`Resultat`) och
+  H (`Medalj`: Guld, Silver, Brons eller tom). Rubrikerna läggs till i
+  befintliga ark om cellerna är tomma. Har kolumnerna redan annat innehåll
+  används de inte, och appen säger till när man väljer Tävling.
 - **Vapenlista**: fliken "Vapen" skapas automatiskt med fyra standardvapen.
   Hanteras under **Meny → Vapen** (lägg till, ta bort, favorit, dra för att
   sortera, skott per ask, dölja). Kolumnerna är

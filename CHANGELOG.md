@@ -6,6 +6,12 @@ fått, från första versionen till idag.
 
 ---
 
+## 26.11.2 · november 2026
+
+- 🏅 **Resultat och medalj för tävlingar** – välj Tävling och ange resultat
+  och eventuell medalj för varje vapen. Båda är valfria. Medaljerna räknas
+  per år i Statistik och följer med i PDF:en.
+
 ## 26.11.1 · november 2026
 
 - 🧾 Har du egna anteckningar i kolumner efter Notering i arket? De följer
